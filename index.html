@@ -11,28 +11,48 @@
         <link rel="stylesheet" href="css/index.min.css" />
         <link rel="stylesheet" href="css/about.min.css" />
         <link rel="stylesheet" href="css/contacts.min.css" />
+        <style>
+            #lang-toggle {
+                background: none;
+                border: 1px solid #fff;
+                color: #fff;
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.1em;
+                padding: 4px 10px;
+                cursor: pointer;
+                margin-left: 16px;
+                transition: background 0.2s, color 0.2s;
+            }
+            #lang-toggle:hover {
+                background: #fff;
+                color: #000;
+            }
+        </style>
     </head>
     <body>
         <header class="header" data-page="home" style="padding: 0;">
             <div class="container-fluid container-lg d-flex flex-wrap align-items-center justify-content-between">
                 <a class="brand-logo d-flex align-items-center header_logo" href="#">
-                    
                     <img src="img/logo2.png" alt="Barbers Hub" style="height:150px; width:auto;" />
                 </a>
                 <nav class="header_nav">
                     <ul class="header_nav-list">
                         <li class="header_nav-list_item nav-item" data-page="home">
-                            <a class="nav-link" href="#">Home</a>
+                            <a class="nav-link" href="#" data-i18n="nav_home">Home</a>
                         </li>
                         <li class="header_nav-list_item nav-item" data-page="about">
-                            <a class="nav-link" href="#about">About</a>
+                            <a class="nav-link" href="#about" data-i18n="nav_about">About</a>
                         </li>
                         <li class="header_nav-list_item nav-item" data-page="contacts">
-                            <a class="nav-link" href="#contacts">Contacts</a>
+                            <a class="nav-link" href="#contacts" data-i18n="nav_contacts">Contacts</a>
+                        </li>
+                        <li class="header_nav-list_item nav-item">
+                            <button id="lang-toggle" title="Switch language">LV</button>
                         </li>
                     </ul>
                 </nav>
-                <a class="header_btn btn theme-element" href="https://www.fresha.com/a/barbers-hub-elizabetes-75-riga-centra-rajons-elizabetes-iela-75-ea5w7da6/all-offer?menu=true&share=true&pId=46463" target="_blank" rel="noopener">Book now</a>
+                <a class="header_btn btn theme-element" href="https://www.fresha.com/a/barbers-hub-elizabetes-75-riga-centra-rajons-elizabetes-iela-75-ea5w7da6/all-offer?menu=true&share=true&pId=46463" target="_blank" rel="noopener" data-i18n="nav_book">Book now</a>
                 <span class="header_trigger d-inline-flex d-lg-none flex-column justify-content-between">
                     <span class="line"></span>
                     <span class="line"></span>
@@ -62,10 +82,10 @@
                     class="container d-flex flex-column justify-content-center align-items-center align-items-md-start align-items-lg-center align-items-xl-start"
                 >
                     <div class="hero_content col-xl-7 col-xxl-6">
-                        <h1 class="hero_content-header">Co-working barbershop. Open for years.</h1>
+                        <h1 class="hero_content-header" data-i18n="hero_headline">Co-working barbershop. Open for years.</h1>
                         <p class="hero_content-text text">
-                            We're individuals.<br>
-                            Mediocrity doesn't work here.<br><br>
+                            <span data-i18n="hero_sub1">We're individuals.</span><br>
+                            <span data-i18n="hero_sub2">Mediocrity doesn't work here.</span><br><br>
                         </p>
                     </div>
                 </div>
@@ -74,35 +94,33 @@
                 <span class="hero_overlay"></span>
                 
             </section>
-            
 
-            
             <section id="about" class="about section">
                 <div class="container d-xl-flex flex-wrap">
                     <div class="about_header section_header col-xl-6">
-                        <h2 class="about_header-title section_header-title" data-aos="fade-right">
-                            Barbers HUB is a space 
-                            <span class="linebreak">for independent barbers.</span>
+                        <h2 class="about_header-title section_header-title" data-aos="fade-right" data-i18n="about_title">
+                            Barbers HUB is a space <span class="linebreak">for independent barbers.</span>
                         </h2>
                         <span
                             class="about_header-subtitle section_header-subtitle"
                             data-aos="fade-right"
                             data-aos-delay="50"
                             data-aos-once="false"
+                            data-i18n="about_subtitle"
                             >About us</span
                         >
                     </div>
                     <div class="about_info col-xl-6 d-sm-flex">
                         <div class="about_info-fact">
-                            <h3 class="about_info-fact_title" data-aos="fade-up">Since 2019</h3>
-                            <p class="about_info-fact_description" data-aos="fade-up">
+                            <h3 class="about_info-fact_title" data-aos="fade-up" data-i18n="about_fact1_title">Since 2019</h3>
+                            <p class="about_info-fact_description" data-aos="fade-up" data-i18n="about_fact1_desc">
                                 Each with their own style. Each responsible for their own work.
                             </p>
                         </div>
                         <div class="about_info-fact">
-                            <h3 class="about_info-fact_title" data-aos="fade-up" data-aos-delay="50">1000+ clients</h3>
-                            <p class="about_info-fact_description" data-aos="fade-up" data-aos-delay="50">
-                                There are no middlemen here. It’s you and the barber. We’re a workspace for professionals.
+                            <h3 class="about_info-fact_title" data-aos="fade-up" data-aos-delay="50" data-i18n="about_fact2_title">1000+ clients</h3>
+                            <p class="about_info-fact_description" data-aos="fade-up" data-aos-delay="50" data-i18n="about_fact2_desc">
+                                There are no middlemen here. It's you and the barber. We're a workspace for professionals.
                             </p>
                         </div>
                     </div>
@@ -113,65 +131,55 @@
                         </picture>
                     </div>
                     <div class="about_text d-md-flex justify-content-between">
-                        <p class="about_text-block text">
+                        <p class="about_text-block text" data-i18n="about_text1">
                             If you're a client — choose your barber and book.
                         </p>
-                        <p class="about_text-block text">
+                        <p class="about_text-block text" data-i18n="about_text2">
                             If you're a barber — if you know your craft, we might have space.
                             Simple. Clear. No bullshit.
                         </p>
                     </div>
                 </div>
             </section>
-            
 
-            
-            
-            
-
-            
             <!-- <section class="gallery">
                 <div class="container-fluid p-0">
                     <div class="container">
                     </div>
                 </div>
             </section> -->
-            
 
-            
-            
-            
-
-            
             <section id="contacts" class="contacts section section--nopt">
                 <div class="container">
                     <div class="contacts_header section_header">
-                        <h2 class="contacts_header-title section_header-title" data-aos="fade-right">Let's talk or book now</h2>
+                        <h2 class="contacts_header-title section_header-title" data-aos="fade-right" data-i18n="contacts_title">Let's talk or book now</h2>
                         <span
                             class="contacts_header-subtitle section_header-subtitle"
                             data-aos="fade-right"
                             data-aos-delay="50"
                             data-aos-once="false"
+                            data-i18n="contacts_subtitle"
                             >Contacts</span
                         >
                     </div>
                     <div class="contacts_main d-flex flex-column flex-lg-row justify-content-between">
                         <ul class="contacts_main-data">
                             <li class="contacts_main-data_item">
-                                <h3 class="title">Email</h3>
+                                <h3 class="title" data-i18n="contacts_email_label">Email</h3>
                                 <a class="data link link--underline" href="mailto:info@barbershub.lv">info@barbershub.lv</a>
                             </li>
                             <li class="contacts_main-data_item">
-                                <h3 class="title">Address</h3>
-                                <span class="data">Elizabetes iela 75, Rīga</span>
+                                <h3 class="title" data-i18n="contacts_address_label">Address</h3>
+                                <span class="data" data-i18n="contacts_address_value">Elizabetes iela 75, Rīga</span>
                             </li>
                             <li class="contacts_main-data_item contacts_main-data_item--tel">
-                                <h3 class="title">Phone</h3>
+                                <h3 class="title" data-i18n="contacts_phone_label">Phone</h3>
                                 <div class="wrapper d-flex flex-column flex-md-row">
                                     <a class="data link link--underline" href="tel:+37125774433">+37125774433</a>
                                 </div>
+                                <p class="text" style="margin-top:8px; opacity:0.7; font-size:0.9em;" data-i18n="contacts_phone_note">We might not answer — we're working. Book online.</p>
                                 <br>
-                                <a class="header_btn btn theme-element" href="https://www.fresha.com/a/barbers-hub-elizabetes-75-riga-centra-rajons-elizabetes-iela-75-ea5w7da6/all-offer?menu=true&share=true&pId=46463" target="_blank" rel="noopener" style="margin-left:0">Book now</a>
+                                <a class="header_btn btn theme-element" href="https://www.fresha.com/a/barbers-hub-elizabetes-75-riga-centra-rajons-elizabetes-iela-75-ea5w7da6/all-offer?menu=true&share=true&pId=46463" target="_blank" rel="noopener" style="margin-left:0" data-i18n="nav_book">Book now</a>
                             </li>
                         </ul>
                         <iframe
@@ -198,20 +206,20 @@
                             </span>
                             <a class="link" href="tel:+37125774433">+37125774433</a>
                         </span>
-                        <p class="footer_contacts-address">
+                        <p class="footer_contacts-address" data-i18n="contacts_address_value">
                             Elizabetes iela 75, Rīga
                         </p>
                     </div>
                     <div class="footer_newsletter footer_block col-12 col-md-4">
-                        <h4 class="footer_newsletter-header">For questions or business offers:</h4>
+                        <h4 class="footer_newsletter-header" data-i18n="footer_business">For questions or business offers:</h4>
                         <p class="footer_newsletter-text text">
                             <a href="mailto:info@barbershub.lv">info@barbershub.lv</a>
                         </p>
                     </div>
                     <div class="footer_block col-12 col-md-4">
                         <p class="footer_copyright">
-                            <span class="linebreak">&copy; Barbers Hub</span>
-                            <span class="linebreak">All rights reserved <span id="currentYear"></span></span>
+                            <span class="linebreak" data-i18n="footer_copyright">&copy; Barbers Hub</span>
+                            <span class="linebreak"><span data-i18n="footer_rights">All rights reserved</span> <span id="currentYear"></span></span>
                         </p>
                     </div>
                 </div>
@@ -221,5 +229,6 @@
         <script src="js/index.min.js"></script>
         <script src="js/about.min.js"></script>
         <script src="js/contacts.min.js"></script>
+        <script src="js/i18n.js"></script>
     </body>
 </html>
