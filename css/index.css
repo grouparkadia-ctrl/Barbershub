@@ -1596,6 +1596,24 @@ img {
 }
 /* === Mobile fixes === */
 
+/* Shrink logo on mobile so Book Now fits in header row */
+@media screen and (max-width:991.97px) {
+    .header_logo img {
+        height: 60px !important;
+        width: auto;
+    }
+    .header_btn {
+        display: block;
+        margin-left: auto;
+        margin-right: 16px;
+        padding: 8px 14px;
+        font-size: 0.75rem;
+    }
+    .header_trigger {
+        flex-shrink: 0;
+    }
+}
+
 /* Show BOOK NOW in contacts section on all screen sizes */
 #contacts .header_btn {
     display: block;
