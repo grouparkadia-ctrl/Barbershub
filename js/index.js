@@ -19,7 +19,8 @@ let isShown = false;
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    window.addEventListener('scroll', openPromoModal);
+    // PROMO DISABLED — uncomment line below when promo text is ready:
+    // window.addEventListener('scroll', openPromoModal);
 
     initHeroSlider('.hero', '.hero_slider', {
         direction: 'horizontal',
