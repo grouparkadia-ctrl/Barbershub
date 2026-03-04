@@ -32,9 +32,13 @@ function drawNav() {
         menuTrigger.classList.remove('active');
         menu.classList.remove('active');
         document.documentElement.classList.remove('fixed');
+        // Immediately kill pointer events on the menu so it can't intercept
+        // touches during the 500ms max-height collapse CSS transition
+        menu.style.pointerEvents = 'none';
+        setTimeout(() => { menu.style.pointerEvents = ''; }, 550);
     }
 
-    // Wire closeMenu to nav link clicks (fix: mobile page stuck after nav tap - Chrome scroll timing)
+    // Wire closeMenu to nav link clicks (fix: mobile Chrome touch freeze)
     const navLinks = document.querySelectorAll('.header_nav-list .nav-link');
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
@@ -45,7 +49,8 @@ function drawNav() {
                 e.preventDefault();
                 const target = document.querySelector(href);
                 if (target) {
-                    setTimeout(() => target.scrollIntoView({ behavior: 'smooth' }), 10);
+                    // Wait for menu collapse transition (500ms) before scrolling
+                    setTimeout(() => target.scrollIntoView({ behavior: 'smooth' }), 520);
                 }
             }
         });
