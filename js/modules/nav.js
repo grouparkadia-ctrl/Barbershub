@@ -38,6 +38,7 @@ function drawNav() {
     const navLinks = document.querySelectorAll('.header_nav-list .nav-link');
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
+            e.stopPropagation();
             const href = link.getAttribute('href');
             closeMenu();
             if (href && href.startsWith('#') && href.length > 1) {
