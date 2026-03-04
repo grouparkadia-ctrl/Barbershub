@@ -34,6 +34,12 @@ function drawNav() {
         document.documentElement.classList.remove('fixed');
     }
 
+    // Wire closeMenu to nav link clicks (fix: mobile page stuck after nav tap)
+    const navLinks = document.querySelectorAll('.header_nav-list .nav-link');
+    navLinks.forEach(link => {
+        link.addEventListener('click', closeMenu);
+    });
+
     function setElementMargin() {
         if (window.innerWidth < 992) {
             logo.style.marginLeft = `${setEdgePadding().left}px`;
