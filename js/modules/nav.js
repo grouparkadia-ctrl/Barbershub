@@ -34,10 +34,20 @@ function drawNav() {
         document.documentElement.classList.remove('fixed');
     }
 
-    // Wire closeMenu to nav link clicks (fix: mobile page stuck after nav tap)
+    // Wire closeMenu to nav link clicks (fix: mobile page stuck after nav tap - Chrome scroll timing)
     const navLinks = document.querySelectorAll('.header_nav-list .nav-link');
     navLinks.forEach(link => {
-        link.addEventListener('click', closeMenu);
+        link.addEventListener('click', (e) => {
+            const href = link.getAttribute('href');
+            closeMenu();
+            if (href && href.startsWith('#') && href.length > 1) {
+                e.preventDefault();
+                const target = document.querySelector(href);
+                if (target) {
+                    setTimeout(() => target.scrollIntoView({ behavior: 'smooth' }), 10);
+                }
+            }
+        });
     });
 
     function setElementMargin() {
