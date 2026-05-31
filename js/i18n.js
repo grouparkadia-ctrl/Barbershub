@@ -18,8 +18,23 @@
         el.innerHTML = t[key];
       }
     });
+    document.querySelectorAll('[data-i18n-aria-label]').forEach(function (el) {
+      const key = el.getAttribute('data-i18n-aria-label');
+      if (t[key] !== undefined && t[key] !== '') {
+        el.setAttribute('aria-label', t[key]);
+      }
+    });
+    document.querySelectorAll('[data-i18n-alt]').forEach(function (el) {
+      const key = el.getAttribute('data-i18n-alt');
+      if (t[key] !== undefined && t[key] !== '') {
+        el.setAttribute('alt', t[key]);
+      }
+    });
     if (t['page_title']) document.title = t['page_title'];
     document.documentElement.lang = currentLang;
+    document.dispatchEvent(new CustomEvent('barbershub:languagechange', {
+      detail: { lang: currentLang, translations: t }
+    }));
   }
 
   function updateToggle() {
@@ -30,14 +45,22 @@
   async function switchLang(lang) {
     currentLang = lang;
     localStorage.setItem(STORAGE_KEY, lang);
-    translations = await loadLang(lang);
-    applyTranslations(translations);
+    try {
+      translations = await loadLang(lang);
+      applyTranslations(translations);
+    } catch (err) {
+      translations = {};
+    }
     updateToggle();
   }
 
   async function init() {
-    translations = await loadLang(currentLang);
-    applyTranslations(translations);
+    try {
+      translations = await loadLang(currentLang);
+      applyTranslations(translations);
+    } catch (err) {
+      translations = {};
+    }
     updateToggle();
 
     const btn = document.getElementById('lang-toggle');

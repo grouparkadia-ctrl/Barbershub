@@ -16,6 +16,9 @@ This project uses **pre-compiled minified bundles**. The browser loads these fil
 | `js/modules/nav.js` | `js/common.min.js` |
 | `js/modules/*.js` | `js/common.min.js`, `js/index.min.js` |
 | `js/pages/*.js` | `js/about.min.js`, `js/contacts.min.js` |
+| `js/barbers-v2.js` | `js/barbers-v2.min.js` |
+| `js/i18n.js` | `js/i18n.min.js` |
+| `css/barbers-v2.css` | `css/barbers-v2.min.css` |
 
 ### What this means
 
@@ -73,3 +76,11 @@ grep -o 'someFunction[^}]*}' js/common.min.js
 - `scrollIntoView` delayed 520ms to fire after menu has fully collapsed
 
 See: [Issue #5](https://github.com/grouparkadia-ctrl/Barbershub/issues/5)
+
+---
+
+## Barber Tour Form
+
+The barber tour form currently falls back to an email draft addressed to `barbersbronson@gmail.com`.
+
+To connect Google Forms, follow [`docs/google-forms-tour-setup.md`](docs/google-forms-tour-setup.md), then add the form action URL and three field IDs to both `js/barbers-v2.js` and `js/barbers-v2.min.js`.
