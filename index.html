@@ -19,7 +19,6 @@
         <link rel="stylesheet" href="css/index.min.css" />
         <link rel="stylesheet" href="css/about.min.css" />
         <link rel="stylesheet" href="css/contacts.min.css" />
-        <link rel="stylesheet" href="css/barbers-v2.min.css" />
         <style>
             #lang-toggle {
                 background: none;
@@ -51,7 +50,7 @@
                             <a class="nav-link" href="#" data-i18n="nav_home">Home</a>
                         </li>
                         <li class="header_nav-list_item nav-item" data-page="about">
-                            <a class="nav-link" href="#audience" data-i18n="nav_about">About</a>
+                            <a class="nav-link" href="#about" data-i18n="nav_about">About</a>
                         </li>
                         <li class="header_nav-list_item nav-item" data-page="contacts">
                             <a class="nav-link" href="#contacts" data-i18n="nav_contacts">Contacts</a>
@@ -96,208 +95,72 @@
                     class="container d-flex flex-column justify-content-center align-items-center align-items-md-start align-items-lg-center align-items-xl-start"
                 >
                     <div class="hero_content col-xl-7 col-xxl-6">
-                        <span class="v2-kicker" data-i18n="v2_hero_kicker">Barbers Hub Riga</span>
-                        <h1 class="hero_content-header" data-i18n="v2_hero_title">Book a cut. Or build your independent chair.</h1>
-                        <p class="hero_content-text text" data-i18n="v2_hero_text">
-                            A working barbershop for clients who value the craft, and for barbers who want freedom with a professional environment around them.
+                        <h1 class="hero_content-header" data-i18n="hero_headline">Co-working barbershop. Open for years.</h1>
+                        <p class="hero_content-text text">
+                            <span data-i18n="hero_sub1">We're individuals.</span><br>
+                            <span data-i18n="hero_sub2">Mediocrity doesn't work here.</span><br><br>
                         </p>
-                        <div class="v2-hero-actions">
-                            <a class="btn theme-element" href="#audience" data-audience-link="clients" data-i18n="v2_book_cut">Book a cut</a>
-                            <a class="btn theme-element btn--revert" href="#audience" data-audience-link="barbers" data-i18n="v2_for_barbers">For barbers</a>
-                        </div>
                     </div>
                 </div>
-                
+
                 <span style="position:absolute; inset:0; background:rgba(0,0,0,0.45); z-index:1; pointer-events:none;"></span>
                 <span class="hero_overlay"></span>
 
             </section>
 
-            <section id="audience" class="v2-audience section">
-                <div class="container">
-                    <div class="v2-switcher" role="tablist" aria-label="Choose your Barbers Hub path" data-i18n-aria-label="v2_switcher_label">
-                        <button class="v2-switcher-btn active" type="button" role="tab" aria-selected="true" data-audience-tab="clients">
-                            <span data-i18n="v2_for_clients">For clients</span>
-                            <small data-i18n="v2_clients_tab_text">Book, arrive, get the cut.</small>
-                        </button>
-                        <button class="v2-switcher-btn" type="button" role="tab" aria-selected="false" data-audience-tab="barbers">
-                            <span data-i18n="v2_for_barbers">For barbers</span>
-                            <small data-i18n="v2_barbers_tab_text">Rent a chair. Keep control.</small>
-                        </button>
+            <section id="about" class="about section">
+                <div class="container d-xl-flex flex-wrap">
+                    <div class="about_header section_header col-xl-6">
+                        <h2 class="about_header-title section_header-title" data-aos="fade-right" data-i18n="about_title">
+                            Barbers HUB is a space <span class="linebreak">for independent barbers.</span>
+                        </h2>
+                        <span
+                            class="about_header-subtitle section_header-subtitle"
+                            data-aos="fade-right"
+                            data-aos-delay="50"
+                            data-aos-once="false"
+                            data-i18n="about_subtitle"
+                            >About us</span
+                        >
                     </div>
-
-                    <div class="v2-panel active" data-audience-panel="clients">
-                        <div class="v2-client-grid">
-                            <div class="v2-panel-lead">
-                                <span class="v2-kicker" data-i18n="v2_clients_kicker">Clients</span>
-                                <h2 data-i18n="v2_clients_title">Choose your barber and book direct.</h2>
-                                <p data-i18n="v2_clients_text">Barbers Hub is a professional workspace for independent barbers. Each barber owns their craft, their schedule, and their client relationship.</p>
-                                <a class="btn theme-element" href="https://www.fresha.com/a/barbers-hub-elizabetes-75-riga-centra-rajons-elizabetes-iela-75-ea5w7da6/all-offer?menu=true&share=true&pId=46463" target="_blank" rel="noopener" data-i18n="nav_book">Book now</a>
-                            </div>
-                            <div class="v2-client-facts">
-                                <div>
-                                    <strong data-i18n="v2_since_title">Since 2019</strong>
-                                    <span data-i18n="v2_since_text">Independent professionals, one shared standard.</span>
-                                </div>
-                                <div>
-                                    <strong>Elizabetes iela 75</strong>
-                                    <span data-i18n="v2_location_text">Central Riga location with a working barbershop atmosphere.</span>
-                                </div>
-                                <div>
-                                    <strong data-i18n="v2_direct_title">No middle layer</strong>
-                                    <span data-i18n="v2_direct_text">You choose the barber. The barber does the work.</span>
-                                </div>
-                            </div>
+                    <div class="about_info col-xl-6 d-sm-flex">
+                        <div class="about_info-fact">
+                            <h3 class="about_info-fact_title" data-aos="fade-up" data-i18n="about_fact1_title">Since 2019</h3>
+                            <p class="about_info-fact_description" data-aos="fade-up" data-i18n="about_fact1_desc">
+                                Each with their own style. Each responsible for their own work.
+                            </p>
+                        </div>
+                        <div class="about_info-fact">
+                            <h3 class="about_info-fact_title" data-aos="fade-up" data-aos-delay="50" data-i18n="about_fact2_title">1000+ clients</h3>
+                            <p class="about_info-fact_description" data-aos="fade-up" data-aos-delay="50" data-i18n="about_fact2_desc">
+                                There are no middlemen here. It's you and the barber. We're a workspace for professionals.
+                            </p>
                         </div>
                     </div>
-
-                    <div class="v2-panel" data-audience-panel="barbers" hidden>
-                        <section class="v2-barber-hero">
-                            <div class="v2-panel-lead">
-                                <span class="v2-kicker" data-i18n="v2_barbers_kicker">Independent coworking for barbers</span>
-                                <h2 data-i18n="v2_barbers_title">Work for yourself — not by yourself.</h2>
-                                <p data-i18n="v2_barbers_text">Keep your clients. Keep your income. Focus on your craft while Barbers Hub handles the professional environment around you.</p>
-                                <div class="v2-actions">
-                                    <a class="btn theme-element" href="#tour" data-i18n="v2_take_tour">Take a tour</a>
-                                    <a class="btn theme-element btn--revert" href="https://wa.me/37125774433?text=Hi%20Barbers%20Hub%2C%20I%20want%20to%20ask%20about%20chair%20rental." target="_blank" rel="noopener" data-whatsapp-link data-i18n="v2_chat_whatsapp">Chat on WhatsApp</a>
-                                </div>
-                            </div>
-                            <div class="v2-fit-grid">
-                                <article>
-                                    <span>01</span>
-                                    <h3 data-i18n="v2_fit_new_title">New barbers</h3>
-                                    <p data-i18n="v2_fit_new_text">Build confidence and a loyal client base inside a real shop environment.</p>
-                                </article>
-                                <article>
-                                    <span>02</span>
-                                    <h3 data-i18n="v2_fit_growing_title">Growing pros</h3>
-                                    <p data-i18n="v2_fit_growing_text">Move toward independence without taking on every operational problem alone.</p>
-                                </article>
-                                <article>
-                                    <span>03</span>
-                                    <h3 data-i18n="v2_fit_experienced_title">Experienced barbers</h3>
-                                    <p data-i18n="v2_fit_experienced_text">Use flexible access, full control, and a serious space as your base.</p>
-                                </article>
-                            </div>
-                        </section>
-
-                        <section class="v2-story">
-                            <div class="v2-story-media">
-                                <img src="img/IMG_1.jpg" alt="Barbers Hub working space" data-i18n-alt="v2_story_image_alt" />
-                            </div>
-                            <div class="v2-story-copy">
-                                <span class="v2-kicker" data-i18n="v2_story_kicker">Independence without the chaos</span>
-                                <h2 data-i18n="v2_story_title">You work freely inside a structured shop.</h2>
-                                <p data-i18n="v2_story_text">Going independent should not mean doing everything alone. You focus on clients and craft; we keep the space professional, maintained, and ready for work.</p>
-                                <ul>
-                                    <li data-i18n="v2_story_point_1">No corporate pressure.</li>
-                                    <li data-i18n="v2_story_point_2">No unnecessary micromanagement.</li>
-                                    <li data-i18n="v2_story_point_3">No isolation.</li>
-                                </ul>
-                            </div>
-                        </section>
-
-                        <section class="v2-included">
-                            <div class="v2-section-heading">
-                                <span class="v2-kicker" data-i18n="v2_included_kicker">What's included</span>
-                                <h2 data-i18n="v2_included_title">The operating base around your chair.</h2>
-                            </div>
-                            <div class="v2-included-grid">
-                                <span data-i18n="v2_included_1">Fully equipped workspace</span>
-                                <span data-i18n="v2_included_2">Flexible rental options</span>
-                                <span data-i18n="v2_included_3">Professional coworking environment</span>
-                                <span data-i18n="v2_included_4">Growth-focused barber community</span>
-                                <span data-i18n="v2_included_5">Shared knowledge and experience</span>
-                                <span data-i18n="v2_included_6">Cleaning and maintenance</span>
-                                <span data-i18n="v2_included_7">Utilities and daily operations</span>
-                                <span data-i18n="v2_included_8">Comfortable client atmosphere</span>
-                                <span data-i18n="v2_included_9">Optional business support</span>
-                            </div>
-                        </section>
-
-                        <section class="v2-growth">
-                            <div>
-                                <span class="v2-kicker" data-i18n="v2_growth_kicker">Learn faster. Grow faster.</span>
-                                <h2 data-i18n="v2_growth_title">The environment around you matters.</h2>
-                            </div>
-                            <p data-i18n="v2_growth_text">Work alongside skilled professionals, exchange knowledge, improve your confidence, and grow naturally inside a real barbershop atmosphere.</p>
-                        </section>
-
-                        <section class="v2-pricing">
-                            <div class="v2-section-heading">
-                                <span class="v2-kicker" data-i18n="v2_pricing_kicker">Flexible rental models</span>
-                                <h2 data-i18n="v2_pricing_title">Start small or make it your base.</h2>
-                            </div>
-                            <div class="v2-price-grid">
-                                <article>
-                                    <h3 data-i18n="v2_day_title">Day</h3>
-                                    <strong data-i18n="v2_day_price">from EUR 49.99/day</strong>
-                                    <p data-i18n="v2_day_text">For flexible schedules, trial days, or testing independent work.</p>
-                                </article>
-                                <article class="featured">
-                                    <h3>Flex</h3>
-                                    <strong data-i18n="v2_flex_price_10">EUR 350 / 10 days</strong>
-                                    <strong data-i18n="v2_flex_price_15">EUR 450 / 15 days</strong>
-                                    <p data-i18n="v2_flex_text">For growing barbers who want flexibility while building consistency.</p>
-                                </article>
-                                <article>
-                                    <h3 data-i18n="v2_resident_title">Resident</h3>
-                                    <strong data-i18n="v2_resident_price">EUR 600/month</strong>
-                                    <p data-i18n="v2_resident_text">Unlimited 24/7 access for independent professionals ready to make the space their base.</p>
-                                </article>
-                            </div>
-                            <p class="v2-note" data-i18n="v2_pricing_note">Additional business support services are available separately depending on your needs.</p>
-                        </section>
-
-                        <section class="v2-gallery" aria-label="Shop atmosphere gallery" data-i18n-aria-label="v2_gallery_label">
-                            <img src="img/IMG_1.jpg" alt="Barbers Hub chairs and interior" data-i18n-alt="v2_gallery_image_1_alt" />
-                            <img src="img/IMG_2.jpg" alt="Barber working with a client" data-i18n-alt="v2_gallery_image_2_alt" />
-                        </section>
-
-                        <section id="tour" class="v2-tour">
-                            <div class="v2-tour-copy">
-                                <span class="v2-kicker" data-i18n="v2_tour_kicker">Start without pressure</span>
-                                <h2 data-i18n="v2_tour_title">Book a tour, meet the team, feel the room.</h2>
-                                <p data-i18n="v2_tour_text">You do not need to make a life-changing decision overnight. One visit is enough to understand whether the environment fits your goals.</p>
-                            </div>
-                            <form class="v2-form" data-tour-form>
-                                <label>
-                                    <span data-i18n="v2_form_name">Full name</span>
-                                    <input name="name" type="text" autocomplete="name" data-google-entry="name" required />
-                                </label>
-                                <label>
-                                    <span data-i18n="v2_form_email">Email</span>
-                                    <input name="email" type="email" autocomplete="email" data-google-entry="email" required />
-                                </label>
-                                <label>
-                                    <span data-i18n="v2_form_phone">Phone number</span>
-                                    <input name="phone" type="tel" autocomplete="tel" data-google-entry="phone" required />
-                                </label>
-                                <button class="btn theme-element" type="submit" data-i18n="v2_form_submit">Request a tour</button>
-                                <p class="v2-form-status v2-note" data-form-status data-i18n="v2_form_note">Send your details and we will contact you to arrange the tour.</p>
-                            </form>
-                        </section>
-
-                        <section class="v2-principles">
-                            <div>
-                                <span class="v2-kicker" data-i18n="v2_more_kicker">More than a chair</span>
-                                <h2 data-i18n="v2_more_title">Your clients. Your income. Your pace.</h2>
-                                <p data-i18n="v2_more_text">A space for barbers who want more freedom, more ownership, more growth, and more control over their future.</p>
-                            </div>
-                            <div>
-                                <span class="v2-kicker" data-i18n="v2_principles_kicker">House principles</span>
-                                <ul>
-                                    <li data-i18n="v2_principles_1">Maintain cleanliness and hygiene.</li>
-                                    <li data-i18n="v2_principles_2">Respect fellow barbers and clients.</li>
-                                    <li data-i18n="v2_principles_3">Contribute to a positive atmosphere.</li>
-                                    <li data-i18n="v2_principles_4">Respect the shared workspace and equipment.</li>
-                                </ul>
-                                <p class="v2-note" data-i18n="v2_principles_note">Detailed terms and house rules are provided during onboarding and membership confirmation.</p>
-                            </div>
-                        </section>
+                    <div class="about_media col-12" data-aos="zoom-in" data-aos-delay="300" data-aos-duration="700">
+                        <picture>
+                            <source data-srcset="img/IMG_1.jpg" srcset="img/IMG_1.jpg" type="image/webp" />
+                            <img class="lazy about_media-img" data-src="img/IMG_1.jpg" src="img/IMG_1.jpg" alt="media" />
+                        </picture>
+                    </div>
+                    <div class="about_text d-md-flex justify-content-between">
+                        <p class="about_text-block text" data-i18n="about_text1">
+                            If you're a client — choose your barber and book.
+                        </p>
+                        <p class="about_text-block text" data-i18n="about_text2">
+                            If you're a barber — if you know your craft, we might have space.
+                            Simple. Clear. No bullshit.
+                        </p>
                     </div>
                 </div>
             </section>
+
+            <!-- <section class="gallery">
+                <div class="container-fluid p-0">
+                    <div class="container">
+                    </div>
+                </div>
+            </section> -->
 
             <section id="contacts" class="contacts section section--nopt">
                 <div class="container">
@@ -346,18 +209,6 @@
             </section>
             
         </main>
-        <a
-            class="v2-whatsapp-widget"
-            href="https://wa.me/37125774433?text=Hi%20Barbers%20Hub%2C%20I%20want%20to%20ask%20about%20chair%20rental."
-            target="_blank"
-            rel="noopener"
-            aria-label="Chat with Barbers Hub on WhatsApp"
-            data-i18n-aria-label="v2_whatsapp_label"
-            data-whatsapp-link
-        >
-            <span>WhatsApp</span>
-            <strong data-i18n="v2_whatsapp_widget">Chat now</strong>
-        </a>
         <footer class="footer section-nopb">
             <div class="container">
                 <div class="row">
@@ -391,7 +242,6 @@
         <script src="js/index.min.js"></script>
         <script src="js/about.min.js"></script>
         <script src="js/contacts.min.js"></script>
-        <script src="js/barbers-v2.min.js"></script>
-        <script src="js/i18n.min.js"></script>
+        <script src="js/i18n.js"></script>
     </body>
 </html>
