@@ -83,6 +83,6 @@ See: [Issue #5](https://github.com/grouparkadia-ctrl/Barbershub/issues/5)
 
 The barber recruitment landing page lives at [`for-barbers.html`](for-barbers.html). It is intentionally separate from the customer homepage so it can be shared directly through social media without adding competing calls to action to the normal booking flow.
 
-The barber tour form currently falls back to an email draft addressed to `barbersbronson@gmail.com`.
+The barber tour form submits to the connected Google Form. If that configuration is removed or fails, it falls back to an email draft addressed to `barbersbronson@gmail.com`.
 
-To connect Google Forms, follow [`docs/google-forms-tour-setup.md`](docs/google-forms-tour-setup.md), then add the form action URL and three field IDs to both `js/barbers-v2.js` and `js/barbers-v2.min.js`.
+Google Forms integration details live in [`docs/google-forms-tour-setup.md`](docs/google-forms-tour-setup.md). If the form changes, update the form action URL and three field IDs in both `js/barbers-v2.js` and `js/barbers-v2.min.js`.

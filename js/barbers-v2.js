@@ -6,11 +6,11 @@
             lv: 'Sveiki, Barbers Hub! Vēlos uzzināt vairāk par krēsla nomu.'
         },
         fallbackEmail: 'barbersbronson@gmail.com',
-        googleFormAction: '',
+        googleFormAction: 'https://docs.google.com/forms/d/e/1FAIpQLSee1r8k08zEb3Hqubn0K6XmsOmnS8BV2TDgKk2jhkguS-kZuQ/formResponse',
         googleFormEntries: {
-            name: '',
-            email: '',
-            phone: ''
+            name: 'entry.409224256',
+            email: 'entry.1733478299',
+            phone: 'entry.2119825748'
         }
     };
 
