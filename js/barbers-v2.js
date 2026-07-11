@@ -2,8 +2,8 @@
     var integrationConfig = {
         whatsappPhone: '37125774433',
         whatsappMessages: {
-            en: 'Hi Barbers Hub, I want to ask about chair rental.',
-            lv: 'Sveiki, Barbers Hub! Vēlos uzzināt vairāk par krēsla nomu.'
+            en: 'Hi Barbers HUB, I want to book Independence Day and ask about chair rental.',
+            lv: 'Sveiki, Barbers HUB! Vēlos rezervēt Neatkarības dienu un uzzināt vairāk par krēsla nomu.'
         },
         fallbackEmail: 'barbersbronson@gmail.com',
         googleFormAction: 'https://docs.google.com/forms/d/e/1FAIpQLSee1r8k08zEb3Hqubn0K6XmsOmnS8BV2TDgKk2jhkguS-kZuQ/formResponse',

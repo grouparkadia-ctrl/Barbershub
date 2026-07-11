@@ -18,6 +18,27 @@
     margin-top: 30px;
 }
 
+.v2-trust-points {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 24px;
+}
+
+.v2-trust-points span {
+    display: inline-flex;
+    min-height: 34px;
+    align-items: center;
+    padding: 8px 12px;
+    border-left: 3px solid #eb1616;
+    background: rgba(0, 0, 0, .52);
+    color: #fff;
+    font-family: Oswald, sans-serif;
+    font-size: 14px;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
 .v2-audience {
     background: #171717;
 }
@@ -119,7 +140,8 @@
 .v2-client-facts,
 .v2-fit-grid,
 .v2-included-grid,
-.v2-price-grid {
+.v2-price-grid,
+.v2-how-grid {
     display: grid;
     gap: 14px;
 }
@@ -173,12 +195,93 @@
 
 .v2-story,
 .v2-included,
+.v2-independence,
+.v2-how,
 .v2-growth,
 .v2-pricing,
 .v2-gallery,
 .v2-tour,
 .v2-principles {
     margin-top: 70px;
+}
+
+.v2-independence {
+    padding: 36px;
+    border: 1px solid rgba(235, 22, 22, .48);
+    background: linear-gradient(135deg, rgba(235, 22, 22, .20), rgba(32, 32, 32, 1) 58%);
+}
+
+.v2-offer-card {
+    display: grid;
+    gap: 28px;
+    align-items: center;
+}
+
+.v2-price-label {
+    display: block;
+    margin-bottom: 10px;
+    color: #fff;
+    font-family: Oswald, sans-serif;
+    font-size: 18px;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+.v2-offer-card strong {
+    display: block;
+    margin-bottom: 16px;
+    color: #fff;
+    font-family: Oswald, sans-serif;
+    font-size: 58px;
+    font-weight: 500;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.v2-offer-card p {
+    max-width: 560px;
+    margin-bottom: 24px;
+    color: #e6e6e6;
+    font-size: 17px;
+    line-height: 1.55;
+}
+
+.v2-offer-list {
+    display: grid;
+    gap: 12px;
+}
+
+.v2-offer-list li,
+.v2-how-grid article {
+    padding: 18px 20px;
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: rgba(0, 0, 0, .22);
+    color: #fff;
+    font-weight: 500;
+}
+
+.v2-how-grid article span {
+    display: block;
+    margin-bottom: 20px;
+    color: #eb1616;
+    font-family: Oswald, sans-serif;
+    font-size: 18px;
+}
+
+.v2-how-grid h3 {
+    margin-bottom: 10px;
+    color: #fff;
+    font-family: Oswald, sans-serif;
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+.v2-how-grid p {
+    color: #bbb;
+    font-size: 15px;
+    line-height: 1.55;
 }
 
 .v2-story-media {
@@ -311,6 +414,20 @@
     border-color: #fff;
 }
 
+.v2-form-whatsapp {
+    color: #fff;
+    font-family: Oswald, sans-serif;
+    font-size: 16px;
+    line-height: 1.2;
+    text-decoration: underline;
+    text-transform: uppercase;
+}
+
+.v2-form-whatsapp:hover,
+.v2-form-whatsapp:focus {
+    color: #eb1616;
+}
+
 .v2-principles {
     align-items: start;
 }
@@ -365,12 +482,17 @@
     .v2-client-facts,
     .v2-fit-grid,
     .v2-price-grid,
+    .v2-how-grid,
     .v2-gallery {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .v2-included-grid {
         grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .v2-offer-card {
+        grid-template-columns: minmax(0, .92fr) minmax(0, 1.08fr);
     }
 }
 
@@ -392,13 +514,17 @@
         grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
     }
 
-    .v2-client-facts,
-    .v2-price-grid {
+    .v2-client-facts {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .v2-price-grid,
+    .v2-how-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
     .v2-fit-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         align-self: end;
     }
 
@@ -424,6 +550,14 @@
 
     .v2-tour {
         padding: 20px;
+    }
+
+    .v2-independence {
+        padding: 24px 20px;
+    }
+
+    .v2-offer-card strong {
+        font-size: 44px;
     }
 
     .v2-whatsapp-widget {
