@@ -22,6 +22,46 @@
     white-space: nowrap;
 }
 
+.for-barbers-page .hero {
+    background-position: var(--hero-bg-position, center center);
+}
+
+.for-barbers-page .v2-hero-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+        radial-gradient(circle at 72% 44%, rgba(235, 22, 22, .10), rgba(235, 22, 22, 0) 30%),
+        linear-gradient(90deg, rgba(0, 0, 0, .78) 0%, rgba(0, 0, 0, .56) 34%, rgba(0, 0, 0, .30) 66%, rgba(0, 0, 0, .20) 100%);
+}
+
+.for-barbers-page .hero_content {
+    text-shadow: 0 3px 22px rgba(0, 0, 0, .58);
+}
+
+.for-barbers-page .hero_slider-pagination {
+    height: 7px !important;
+    background: rgba(255, 255, 255, .10) !important;
+}
+
+.for-barbers-page .hero_slider-control {
+    display: inline-flex;
+    width: 54px;
+    height: 54px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255, 255, 255, .42);
+    background: rgba(0, 0, 0, .24);
+    color: #fff;
+}
+
+.for-barbers-page .hero_slider-control:focus,
+.for-barbers-page .hero_slider-control:hover {
+    border-color: #eb1616;
+    background: rgba(235, 22, 22, .18);
+}
+
 .v2-hero-support {
     max-width: 620px;
     margin-top: 18px;
@@ -800,18 +840,89 @@
     }
 }
 
-@media screen and (max-width: 767.97px) {
-    .for-barbers-page .hero .container {
-        align-items: flex-start !important;
+@media screen and (max-width: 991.97px) {
+    .for-barbers-page .header .container-fluid {
+        width: 100%;
+        max-width: 100%;
+        min-width: 100%;
+        flex-wrap: wrap;
+        padding-right: 20px;
+        padding-left: 20px;
     }
 
-    .hero_content {
-        width: 100%;
+    .for-barbers-page .header_logo {
+        flex-shrink: 0;
+    }
+
+    .for-barbers-page .header_logo img {
+        height: 60px !important;
+        width: auto;
+    }
+
+    .for-barbers-page .header_trigger {
+        display: inline-flex !important;
+        position: absolute;
+        top: 22px;
+        right: 20px;
+        flex-shrink: 0;
+        margin-left: auto;
+        margin-right: 0;
+        z-index: 2;
+        background:
+            linear-gradient(#fff, #fff) left top / 100% 2px no-repeat,
+            linear-gradient(#fff, #fff) left center / 100% 2px no-repeat,
+            linear-gradient(#fff, #fff) left bottom / 100% 2px no-repeat;
+    }
+
+    .for-barbers-page .header_trigger .line {
+        background: transparent;
+    }
+
+    .for-barbers-page .header_nav {
+        order: 10;
+        min-width: 100%;
+    }
+}
+
+@media screen and (max-width: 767.97px) {
+    .for-barbers-page .hero {
+        height: auto;
+        min-height: 100svh;
+        background-position: var(--hero-bg-position-mobile, var(--hero-bg-position, center center));
+    }
+
+    .for-barbers-page .v2-hero-scrim {
+        background:
+            linear-gradient(180deg, rgba(0, 0, 0, .50) 0%, rgba(0, 0, 0, .34) 28%, rgba(0, 0, 0, .72) 70%, rgba(0, 0, 0, .88) 100%),
+            linear-gradient(90deg, rgba(0, 0, 0, .52) 0%, rgba(0, 0, 0, .22) 100%);
+    }
+
+    .for-barbers-page .hero .container {
+        align-items: flex-start !important;
+        justify-content: flex-start !important;
+        padding-top: 112px;
+        padding-bottom: 44px;
+    }
+
+    .for-barbers-page .hero_content {
+        width: calc(100vw - 40px);
         max-width: 350px;
     }
 
-    .hero_content-header {
+    .for-barbers-page .hero_content-header {
         font-size: 46px;
+    }
+
+    .for-barbers-page .hero .v2-kicker {
+        font-size: 12px;
+    }
+
+    .for-barbers-page .v2-hero-support {
+        font-size: 14px;
+    }
+
+    .for-barbers-page .hero .v2-trust-points span {
+        flex: 1 1 calc(50% - 8px);
     }
 
     .v2-hero-actions .btn,

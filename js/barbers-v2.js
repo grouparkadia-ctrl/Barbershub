@@ -63,6 +63,33 @@
         });
     }
 
+    function initHeroFocalPoints() {
+        var hero = document.querySelector('.for-barbers-page .hero');
+        var slider = document.querySelector('.for-barbers-page .hero_slider');
+        if (!hero || !slider) return;
+
+        function applyActiveFocalPoint() {
+            var activeSlide = slider.querySelector('.swiper-slide-active') || slider.querySelector('.swiper-slide');
+            if (!activeSlide) return;
+
+            var desktopPosition = activeSlide.getAttribute('data-position') || 'center center';
+            var mobilePosition = activeSlide.getAttribute('data-position-mobile') || desktopPosition;
+
+            hero.style.setProperty('--hero-bg-position', desktopPosition);
+            hero.style.setProperty('--hero-bg-position-mobile', mobilePosition);
+        }
+
+        applyActiveFocalPoint();
+
+        if (slider.swiper && typeof slider.swiper.on === 'function') {
+            ['activeIndexChange', 'slideChange', 'transitionEnd'].forEach(function (eventName) {
+                slider.swiper.on(eventName, applyActiveFocalPoint);
+            });
+        }
+
+        window.addEventListener('resize', applyActiveFocalPoint);
+    }
+
     function initWhatsAppLinks() {
         document.querySelectorAll('[data-whatsapp-link]').forEach(function (link) {
             link.href = buildWhatsAppUrl();
@@ -133,6 +160,7 @@
     document.addEventListener('DOMContentLoaded', function () {
         initWhatsAppLinks();
         initAudienceSwitcher();
+        initHeroFocalPoints();
         initTourForm();
     });
 
