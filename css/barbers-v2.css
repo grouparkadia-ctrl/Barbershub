@@ -62,36 +62,6 @@
     background: rgba(235, 22, 22, .18);
 }
 
-.v2-hero-support {
-    max-width: 620px;
-    margin-top: 18px;
-    color: #e6e6e6;
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 1.5;
-}
-
-.v2-trust-points {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 24px;
-}
-
-.v2-trust-points span {
-    display: inline-flex;
-    min-height: 34px;
-    align-items: center;
-    padding: 8px 12px;
-    border-left: 3px solid #eb1616;
-    background: rgba(0, 0, 0, .52);
-    color: #fff;
-    font-family: Oswald, sans-serif;
-    font-size: 14px;
-    line-height: 1.2;
-    text-transform: uppercase;
-}
-
 .v2-audience {
     background: #171717;
 }
@@ -917,14 +887,6 @@
         font-size: 12px;
     }
 
-    .for-barbers-page .v2-hero-support {
-        font-size: 14px;
-    }
-
-    .for-barbers-page .hero .v2-trust-points span {
-        flex: 1 1 calc(50% - 8px);
-    }
-
     .v2-hero-actions .btn,
     .v2-actions .btn,
     .v2-form .btn,
@@ -960,14 +922,6 @@
         display: none;
     }
 
-    .v2-trust-points {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .v2-trust-points span {
-        width: 100%;
-    }
 }
 
 @media screen and (max-width: 991.97px) {
