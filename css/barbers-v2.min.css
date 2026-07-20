@@ -617,6 +617,37 @@
     text-transform: uppercase;
 }
 
+.v2-founder {
+    align-items: center;
+}
+
+.v2-founder-media {
+    position: relative;
+    height: clamp(420px, 48vw, 620px);
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .14);
+    background: #111 url("../img/founder-edgars.jpg") center 18% / cover no-repeat;
+}
+
+.v2-founder-media:after {
+    content: "";
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 44%;
+    height: 4px;
+    background: #eb1616;
+}
+
+.v2-founder-copy {
+    align-self: center;
+}
+
+.v2-founder-copy p + p {
+    margin-top: 18px;
+}
+
 .v2-footer-line {
     margin-bottom: 34px;
 }
