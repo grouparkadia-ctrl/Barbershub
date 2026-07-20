@@ -79,10 +79,15 @@ See: [Issue #5](https://github.com/grouparkadia-ctrl/Barbershub/issues/5)
 
 ---
 
-## Barber Tour Form
+## Barber Trial Day Flow
 
 The barber recruitment landing page lives at [`for-barbers.html`](for-barbers.html). It is intentionally separate from the customer homepage so it can be shared directly through social media without adding competing calls to action to the normal booking flow.
 
-The barber tour form submits to the connected Google Form. If that configuration is removed or fails, it falls back to an email draft addressed to `barbersbronson@gmail.com`.
+The V3 Trial Day flow uses external hosted actions instead of an embedded backend:
 
-Google Forms integration details live in [`docs/google-forms-tour-setup.md`](docs/google-forms-tour-setup.md). If the form changes, update the form action URL and three field IDs in both `js/barbers-v2.js` and `js/barbers-v2.min.js`.
+- Stripe Trial Day payment: `https://buy.stripe.com/aFa3cu20H6l215M7t0gUM01`
+- Trial Day request form: `https://forms.gle/CzAuAix5ZW78UMAx5`
+- Tour booking: `https://calendar.app.google/Pfyd5Gw4wYgkwKRs8`
+- WhatsApp: `https://wa.me/37125774433`
+
+`js/barbers-v2.js` still centralizes WhatsApp message generation and keeps an email fallback for any future embedded form, but the current page sends users to the external payment/form links directly. Update both `js/barbers-v2.js` and `js/barbers-v2.min.js` if this behavior changes.

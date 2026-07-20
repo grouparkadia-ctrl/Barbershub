@@ -2,15 +2,15 @@
     var integrationConfig = {
         whatsappPhone: '37125774433',
         whatsappMessages: {
-            en: 'Hi Barbers HUB, I want to book Independence Day and ask about chair rental.',
-            lv: 'Sveiki, Barbers HUB! Vēlos rezervēt Neatkarības dienu un uzzināt vairāk par krēsla nomu.'
+            en: 'Hi Barbers HUB, I want to book a Trial Day and ask about chair rental.',
+            lv: 'Sveiki, Barbers HUB! Vēlos rezervēt izmēģinājuma dienu un uzzināt vairāk par krēsla nomu.'
         },
         fallbackEmail: 'barbersbronson@gmail.com',
-        googleFormAction: 'https://docs.google.com/forms/d/e/1FAIpQLSee1r8k08zEb3Hqubn0K6XmsOmnS8BV2TDgKk2jhkguS-kZuQ/formResponse',
+        googleFormAction: '',
         googleFormEntries: {
-            name: 'entry.409224256',
-            email: 'entry.1733478299',
-            phone: 'entry.2119825748'
+            name: '',
+            email: '',
+            phone: ''
         }
     };
 
@@ -93,7 +93,7 @@
     }
 
     function openMailFallback(data) {
-        var subject = encodeURIComponent(translate('v2_mail_subject', 'Barbers Hub tour request'));
+        var subject = encodeURIComponent(translate('v2_mail_subject', 'Barbers HUB Trial Day request'));
         var body = encodeURIComponent(
             translate('v2_form_name', 'Full name') + ': ' + (data.get('name') || '') + '\n' +
             translate('v2_form_email', 'Email') + ': ' + (data.get('email') || '') + '\n' +
@@ -121,7 +121,7 @@
             submitToGoogleForm(form, data)
                 .then(function () {
                     form.reset();
-                    setFormStatus(form, translate('v2_form_sent', 'Request sent. We will contact you to arrange the tour.'), false);
+                    setFormStatus(form, translate('v2_form_sent', 'Request sent. We will contact you to arrange your Trial Day.'), false);
                 })
                 .catch(function () {
                     setFormStatus(form, translate('v2_form_email_fallback', 'Could not send the request directly. Opening an email draft instead.'), true);

@@ -768,6 +768,14 @@ img {
     max-width: 470px
 }
 
+.error_actions {
+    gap: 12px
+}
+
+.error_message-contact {
+    margin-top: 20px
+}
+
 .error_code {
     -webkit-clip-path: url(#svgPath);
     clip-path: url(#svgPath);
@@ -831,6 +839,10 @@ img {
     .error_message-text {
         margin: 20px 0 50px;
         text-align: left
+    }
+
+    .error_message-contact {
+        margin-top: 24px
     }
 
     .error_code {
