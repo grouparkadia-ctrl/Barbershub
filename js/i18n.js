@@ -1,13 +1,19 @@
 // i18n.js — language switcher for Barbers Hub
 (function () {
   const DEFAULT_LANG = 'en';
+  const SUPPORTED_LANGS = ['en', 'lv', 'ru'];
   const STORAGE_KEY = 'bh_lang';
 
   let translations = {};
   let currentLang = localStorage.getItem(STORAGE_KEY) || DEFAULT_LANG;
 
+  if (SUPPORTED_LANGS.indexOf(currentLang) === -1) {
+    currentLang = DEFAULT_LANG;
+  }
+
   async function loadLang(lang) {
     const res = await fetch('lang/' + lang + '.json?v=' + Date.now());
+    if (!res.ok) throw new Error('Could not load language: ' + lang);
     return await res.json();
   }
 
@@ -37,12 +43,16 @@
     }));
   }
 
-  function updateToggle() {
-    const btn = document.getElementById('lang-toggle');
-    if (btn) btn.textContent = currentLang === 'en' ? 'LV' : 'EN';
+  function updateLanguageControls() {
+    document.querySelectorAll('[data-lang]').forEach(function (btn) {
+      const isActive = btn.getAttribute('data-lang') === currentLang;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
   }
 
   async function switchLang(lang) {
+    if (SUPPORTED_LANGS.indexOf(lang) === -1 || lang === currentLang) return;
     currentLang = lang;
     localStorage.setItem(STORAGE_KEY, lang);
     try {
@@ -51,7 +61,7 @@
     } catch (err) {
       translations = {};
     }
-    updateToggle();
+    updateLanguageControls();
   }
 
   async function init() {
@@ -61,14 +71,13 @@
     } catch (err) {
       translations = {};
     }
-    updateToggle();
+    updateLanguageControls();
 
-    const btn = document.getElementById('lang-toggle');
-    if (btn) {
+    document.querySelectorAll('[data-lang]').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        switchLang(currentLang === 'en' ? 'lv' : 'en');
+        switchLang(btn.getAttribute('data-lang'));
       });
-    }
+    });
   }
 
   document.addEventListener('DOMContentLoaded', init);

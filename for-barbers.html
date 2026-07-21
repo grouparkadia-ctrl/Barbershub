@@ -21,21 +21,37 @@
         <link rel="stylesheet" href="css/contacts.min.css" />
         <link rel="stylesheet" href="css/barbers-v2.min.css?v=20260720-fit-cards" />
         <style>
-            #lang-toggle {
-                background: none;
-                border: 1px solid #fff;
-                color: #fff;
-                font-size: 12px;
-                font-weight: 700;
-                letter-spacing: 0.1em;
-                padding: 4px 10px;
-                cursor: pointer;
+            .lang-switcher {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
                 margin-left: 16px;
+                padding: 2px;
+                border: 1px solid rgba(255, 255, 255, 0.7);
+            }
+            .lang-switcher button {
+                min-width: 34px;
+                height: 28px;
+                background: none;
+                border: 0;
+                color: #fff;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                padding: 0 8px;
+                cursor: pointer;
                 transition: background 0.2s, color 0.2s;
             }
-            #lang-toggle:hover {
+            .lang-switcher button.active,
+            .lang-switcher button:hover {
                 background: #fff;
                 color: #000;
+            }
+            @media screen and (max-width: 991.97px) {
+                .lang-switcher {
+                    justify-content: center;
+                    margin-left: 0;
+                }
             }
         </style>
     </head>
@@ -63,7 +79,11 @@
                             <a class="nav-link" href="https://wa.me/37125774433" target="_blank" rel="noopener" data-whatsapp-link data-i18n="v2_chat_whatsapp">Chat on WhatsApp</a>
                         </li>
                         <li class="header_nav-list_item nav-item">
-                            <button id="lang-toggle" title="Switch language">LV</button>
+                            <div class="lang-switcher" role="group" aria-label="Choose language" data-i18n-aria-label="language_switcher_label">
+                                <button type="button" class="lang-option" data-lang="en" data-i18n="language_en">EN</button>
+                                <button type="button" class="lang-option" data-lang="lv" data-i18n="language_lv">LV</button>
+                                <button type="button" class="lang-option" data-lang="ru" data-i18n="language_ru">RU</button>
+                            </div>
                         </li>
                         <li class="header_nav-list_item nav-item d-lg-none" style="padding: 20px 0;">
                             <a class="btn theme-element" href="#apply" data-i18n="v2_nav_book_trial">Book My Trial Day</a>
@@ -366,7 +386,7 @@
             data-i18n-aria-label="v2_whatsapp_label"
             data-whatsapp-link
         >
-            <span>WhatsApp</span>
+            <span data-i18n="v2_whatsapp_channel">WhatsApp</span>
             <strong data-i18n="v2_whatsapp_widget">Chat now</strong>
         </a>
         <footer class="footer section-nopb">
@@ -413,6 +433,6 @@
         <script src="js/about.min.js"></script>
         <script src="js/contacts.min.js"></script>
         <script src="js/barbers-v2.min.js?v=20260720-hero-clean"></script>
-        <script src="js/i18n.min.js"></script>
+        <script src="js/i18n.min.js?v=20260721-ru"></script>
     </body>
 </html>
