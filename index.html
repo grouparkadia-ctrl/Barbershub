@@ -21,21 +21,37 @@
         <link rel="stylesheet" href="css/about.min.css" />
         <link rel="stylesheet" href="css/contacts.min.css" />
         <style>
-            #lang-toggle {
-                background: none;
-                border: 1px solid #fff;
-                color: #fff;
-                font-size: 12px;
-                font-weight: 700;
-                letter-spacing: 0.1em;
-                padding: 4px 10px;
-                cursor: pointer;
+            .lang-switcher {
+                display: inline-flex;
+                align-items: center;
+                gap: 2px;
                 margin-left: 16px;
+                padding: 2px;
+                border: 1px solid rgba(255, 255, 255, 0.7);
+            }
+            .lang-switcher button {
+                min-width: 34px;
+                height: 28px;
+                background: none;
+                border: 0;
+                color: #fff;
+                font-size: 11px;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+                padding: 0 8px;
+                cursor: pointer;
                 transition: background 0.2s, color 0.2s;
             }
-            #lang-toggle:hover {
+            .lang-switcher button.active,
+            .lang-switcher button:hover {
                 background: #fff;
                 color: #000;
+            }
+            @media screen and (max-width: 991.97px) {
+                .lang-switcher {
+                    justify-content: center;
+                    margin-left: 0;
+                }
             }
             .footer_for-barbers-link {
                 display: inline-block;
@@ -60,7 +76,7 @@
         <header class="header" data-page="home" style="padding: 0;">
             <div class="container-fluid container-lg d-flex flex-wrap align-items-center justify-content-between">
                 <a class="brand-logo d-flex align-items-center header_logo" href="#">
-                    <img src="img/logo2.png" alt="Barbers Hub" style="height:150px; width:auto;" />
+                    <img src="img/logo2.png" alt="Barbers Hub" data-i18n-alt="brand_logo_alt" style="height:150px; width:auto;" />
                 </a>
                 <nav class="header_nav">
                     <ul class="header_nav-list">
@@ -74,7 +90,11 @@
                             <a class="nav-link" href="#contacts" data-i18n="nav_contacts">Contacts</a>
                         </li>
                         <li class="header_nav-list_item nav-item">
-                            <button id="lang-toggle" title="Switch language">LV</button>
+                            <div class="lang-switcher" role="group" aria-label="Choose language" data-i18n-aria-label="language_switcher_label">
+                                <button type="button" class="lang-option" data-lang="en" data-i18n="language_en">EN</button>
+                                <button type="button" class="lang-option" data-lang="lv" data-i18n="language_lv">LV</button>
+                                <button type="button" class="lang-option" data-lang="ru" data-i18n="language_ru">RU</button>
+                            </div>
                         </li>
                         <li class="header_nav-list_item nav-item d-lg-none" style="padding: 20px 0;">
                             <a class="btn theme-element" href="https://www.fresha.com/a/barbers-hub-elizabetes-75-riga-centra-rajons-elizabetes-iela-75-ea5w7da6/all-offer?menu=true&share=true&pId=46463" target="_blank" rel="noopener" data-i18n="nav_book">Book now</a>
@@ -158,7 +178,7 @@
                     <div class="about_media col-12" data-aos="zoom-in" data-aos-delay="300" data-aos-duration="700">
                         <picture>
                             <source data-srcset="img/IMG_1.jpg" srcset="img/IMG_1.jpg" type="image/webp" />
-                            <img class="lazy about_media-img" data-src="img/IMG_1.jpg" src="img/IMG_1.jpg" alt="media" />
+                            <img class="lazy about_media-img" data-src="img/IMG_1.jpg" src="img/IMG_1.jpg" alt="Barbers Hub workspace" data-i18n-alt="main_about_image_alt" />
                         </picture>
                     </div>
                     <div class="about_text d-md-flex justify-content-between">
@@ -208,7 +228,7 @@
                                 <div class="wrapper d-flex flex-column flex-md-row">
                                     <a class="data link link--underline" href="tel:+37125774433">+37125774433</a>
                                 </div>
-                                <p class="text" style="margin-top:8px; opacity:0.7; font-size:0.9em;" data-i18n="contacts_phone_note">We might not answer — we're working. Book online.</p>
+                                <p class="text" style="margin-top:8px; opacity:0.7; font-size:0.9em;" data-i18n="contacts_phone_note">We might not answer — we're working.<br>Book online.</p>
                                 <br>
                                 <a class="header_btn btn theme-element" href="https://www.fresha.com/a/barbers-hub-elizabetes-75-riga-centra-rajons-elizabetes-iela-75-ea5w7da6/all-offer?menu=true&share=true&pId=46463" target="_blank" rel="noopener" style="margin-left:0" data-i18n="nav_book">Book now</a>
                             </li>
@@ -263,6 +283,6 @@
         <script src="js/index.min.js"></script>
         <script src="js/about.min.js"></script>
         <script src="js/contacts.min.js"></script>
-        <script src="js/i18n.js"></script>
+        <script src="js/i18n.min.js?v=20260724-main-ru"></script>
     </body>
 </html>
