@@ -2,8 +2,9 @@
     var integrationConfig = {
         whatsappPhone: '37125774433',
         whatsappMessages: {
-            en: 'Hi Barbers HUB, I want to book a Trial Day and ask about chair rental.',
-            lv: 'Sveiki, Barbers HUB! Vēlos rezervēt izmēģinājuma dienu un uzzināt vairāk par krēsla nomu.'
+            en: 'Hi BARBERS HUB, I have reviewed the offer and would like to book a Day Pass.',
+            lv: 'Sveiki, BARBERS HUB! Esmu iepazinies ar piedāvājumu un vēlos pieteikt Day Pass.',
+            ru: 'Здравствуйте, BARBERS HUB! Я ознакомился с предложением и хочу забронировать Day Pass.'
         },
         fallbackEmail: 'barbersbronson@gmail.com',
         googleFormAction: '',
@@ -120,7 +121,7 @@
     }
 
     function openMailFallback(data) {
-        var subject = encodeURIComponent(translate('v2_mail_subject', 'Barbers HUB Trial Day request'));
+        var subject = encodeURIComponent(translate('v2_mail_subject', 'BARBERS HUB Day Pass request'));
         var body = encodeURIComponent(
             translate('v2_form_name', 'Full name') + ': ' + (data.get('name') || '') + '\n' +
             translate('v2_form_email', 'Email') + ': ' + (data.get('email') || '') + '\n' +
@@ -148,7 +149,7 @@
             submitToGoogleForm(form, data)
                 .then(function () {
                     form.reset();
-                    setFormStatus(form, translate('v2_form_sent', 'Request sent. We will contact you to arrange your Trial Day.'), false);
+                    setFormStatus(form, translate('v2_form_sent', 'Request sent. We will contact you to arrange your Day Pass.'), false);
                 })
                 .catch(function () {
                     setFormStatus(form, translate('v2_form_email_fallback', 'Could not send the request directly. Opening an email draft instead.'), true);
@@ -170,3 +171,4 @@
         initWhatsAppLinks();
     });
 })();
+
