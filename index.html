@@ -70,6 +70,136 @@
                 background: #eb1616;
                 color: #fff;
             }
+            .client-about-media {
+                display: grid;
+                grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+                gap: 20px;
+                max-height: none;
+                overflow: visible;
+            }
+            .client-about-media_item {
+                position: relative;
+                min-height: 480px;
+                margin: 0;
+                overflow: hidden;
+                background: #151515;
+            }
+            .client-about-media_item img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                filter: grayscale(1);
+                transition: transform 0.6s ease;
+            }
+            .client-about-media_item:hover img {
+                transform: scale(1.025);
+            }
+            .client-about-media_item figcaption {
+                position: absolute;
+                right: 18px;
+                bottom: 18px;
+                padding: 8px 12px;
+                background: #eb1616;
+                color: #fff;
+                font-family: Oswald, sans-serif;
+                font-size: 13px;
+                font-weight: 500;
+                letter-spacing: 0.08em;
+                text-transform: uppercase;
+            }
+            .client-gallery {
+                padding-top: 10px;
+            }
+            .client-gallery .gallery_header {
+                margin-bottom: 36px;
+            }
+            .client-gallery .gallery_list {
+                display: grid;
+                grid-template-columns: repeat(12, minmax(0, 1fr));
+                grid-auto-rows: 175px;
+                gap: 18px;
+                margin: 0;
+                padding: 0 1.25rem;
+            }
+            .client-gallery .gallery_list-item {
+                display: block;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+                background: #151515;
+            }
+            .client-gallery .gallery_list-item::before,
+            .client-gallery .gallery_list-item::after {
+                display: none;
+            }
+            .client-gallery .gallery_list-item:nth-child(1) {
+                grid-column: span 7;
+                grid-row: span 2;
+            }
+            .client-gallery .gallery_list-item:nth-child(2) {
+                grid-column: span 5;
+                grid-row: span 2;
+            }
+            .client-gallery .gallery_list-item:nth-child(3),
+            .client-gallery .gallery_list-item:nth-child(4),
+            .client-gallery .gallery_list-item:nth-child(5) {
+                grid-column: span 4;
+                grid-row: span 2;
+            }
+            .client-gallery .gallery_list-item:nth-child(6) {
+                grid-column: span 12;
+                grid-row: span 2;
+            }
+            .client-gallery .gallery_list-item_img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                filter: grayscale(1);
+                transition: transform 0.55s ease;
+            }
+            .client-gallery .gallery_list-item_img:hover {
+                filter: grayscale(1);
+                transform: scale(1.035);
+            }
+            @media screen and (max-width: 767.97px) {
+                .client-about-media {
+                    grid-template-columns: 1fr;
+                    gap: 14px;
+                }
+                .client-about-media_item {
+                    min-height: 0;
+                    aspect-ratio: 4 / 3;
+                }
+                .client-gallery .gallery_header {
+                    padding: 0 1.25rem;
+                    text-align: left;
+                }
+                .client-gallery .gallery_list {
+                    display: block;
+                }
+                .client-gallery .gallery_list-item,
+                .client-gallery .gallery_list-item:nth-child(n) {
+                    aspect-ratio: 4 / 3;
+                    margin-bottom: 14px;
+                }
+                .client-gallery .gallery_list-item:last-child {
+                    aspect-ratio: 3 / 2;
+                    margin-bottom: 0;
+                }
+            }
+            @media screen and (min-width: 767.98px) {
+                .client-gallery .gallery_list {
+                    padding: 0 1.875rem;
+                }
+            }
+            @media screen and (min-width: 1199.98px) {
+                .client-gallery .gallery_list {
+                    max-width: 1170px;
+                    margin: 0 auto;
+                    padding: 0;
+                }
+            }
         </style>
     </head>
     <body>
@@ -116,8 +246,8 @@
                     <div class="hero_slider-wrapper swiper-wrapper">
                         <div class="hero_slider-slide swiper-slide" data-bg="img/client-hero-service.jpg"></div>
                         <div class="hero_slider-slide swiper-slide" data-bg="img/client-hero-detail.jpg"></div>
-                        <!-- <div class="hero_slider-slide swiper-slide" data-bg="img/IMG_3.jpg"></div> -->
-                        <!-- <div class="hero_slider-slide swiper-slide" data-bg="img/IMG_4.jpg"></div> -->
+                        <div class="hero_slider-slide swiper-slide" data-bg="img/client-hero-lounge.jpg"></div>
+                        <div class="hero_slider-slide swiper-slide" data-bg="img/client-hero-interior.jpg"></div>
                     </div>
                     <div class="hero_slider-pagination swiper-pagination"></div>
                     <div class="hero_slider-controls d-none d-md-flex justify-content-between">
@@ -175,11 +305,15 @@
                             </p>
                         </div>
                     </div>
-                    <div class="about_media col-12" data-aos="zoom-in" data-aos-delay="300" data-aos-duration="700">
-                        <picture>
-                            <source data-srcset="img/client-workspace.jpg" srcset="img/client-workspace.jpg" type="image/jpeg" />
-                            <img class="lazy about_media-img" data-src="img/client-workspace.jpg" src="img/client-workspace.jpg" alt="Barbers Hub workspace" data-i18n-alt="main_about_image_alt" />
-                        </picture>
+                    <div class="about_media client-about-media col-12" data-aos="zoom-in" data-aos-delay="300" data-aos-duration="700">
+                        <figure class="client-about-media_item">
+                            <img loading="lazy" src="img/client-about-floor.jpg" alt="Barbers Hub barber floor" data-i18n-alt="gallery_floor_alt" />
+                            <figcaption data-i18n="about_media_floor">Barber floor</figcaption>
+                        </figure>
+                        <figure class="client-about-media_item">
+                            <img loading="lazy" src="img/client-about-lounge.jpg" alt="Barbers Hub lounge" data-i18n-alt="gallery_lounge_alt" />
+                            <figcaption data-i18n="about_media_lounge">Lounge</figcaption>
+                        </figure>
                     </div>
                     <div class="about_text d-md-flex justify-content-between">
                         <p class="about_text-block text" data-i18n="about_text1">
@@ -193,12 +327,42 @@
                 </div>
             </section>
 
-            <!-- <section class="gallery">
-                <div class="container-fluid p-0">
-                    <div class="container">
+            <section class="gallery client-gallery section section--nopt" aria-labelledby="gallery-title">
+                <div class="container">
+                    <div class="gallery_header section_header">
+                        <h2 id="gallery-title" class="gallery_header-title section_header-title" data-aos="fade-right" data-i18n="gallery_title">
+                            A closer look at BARBERS HUB.
+                        </h2>
+                        <span
+                            class="gallery_header-subtitle section_header-subtitle"
+                            data-aos="fade-right"
+                            data-aos-delay="50"
+                            data-i18n="gallery_subtitle"
+                            >The space</span
+                        >
                     </div>
                 </div>
-            </section> -->
+                <div class="gallery_list">
+                    <a class="gallery_list-item" href="img/client-gallery-lounge.jpg">
+                        <img class="gallery_list-item_img" loading="lazy" src="img/client-gallery-lounge.jpg" alt="Barbers Hub lounge with sofas and large windows" data-i18n-alt="gallery_lounge_alt" />
+                    </a>
+                    <a class="gallery_list-item" href="img/client-gallery-floor.jpg">
+                        <img class="gallery_list-item_img" loading="lazy" src="img/client-gallery-floor.jpg" alt="Barbers Hub main barber floor" data-i18n-alt="gallery_floor_alt" />
+                    </a>
+                    <a class="gallery_list-item" href="img/client-gallery-station.jpg">
+                        <img class="gallery_list-item_img" loading="lazy" src="img/client-gallery-station.jpg" alt="Barber station and mirrors" data-i18n-alt="gallery_station_alt" />
+                    </a>
+                    <a class="gallery_list-item" href="img/client-gallery-waiting.jpg">
+                        <img class="gallery_list-item_img" loading="lazy" src="img/client-gallery-waiting.jpg" alt="Waiting area and interior art" data-i18n-alt="gallery_waiting_alt" />
+                    </a>
+                    <a class="gallery_list-item" href="img/client-gallery-wash.jpg">
+                        <img class="gallery_list-item_img" loading="lazy" src="img/client-gallery-wash.jpg" alt="Hair washing and laundry area" data-i18n-alt="gallery_wash_alt" />
+                    </a>
+                    <a class="gallery_list-item" href="img/client-gallery-art.jpg">
+                        <img class="gallery_list-item_img" loading="lazy" src="img/client-gallery-art.jpg" alt="Barbers Hub art wall" data-i18n-alt="gallery_art_alt" />
+                    </a>
+                </div>
+            </section>
 
             <section id="contacts" class="contacts section section--nopt">
                 <div class="container">
