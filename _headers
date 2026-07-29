@@ -1,0 +1,8 @@
+/chair-access-bh/*
+  X-Robots-Tag: noindex, nofollow, noarchive, nosnippet
+  Referrer-Policy: same-origin
+  X-Content-Type-Options: nosniff
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/chair-access-bh/api
+  Cache-Control: no-store, private
