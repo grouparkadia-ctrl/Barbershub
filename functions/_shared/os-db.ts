@@ -12,7 +12,7 @@ export function bindRuntimeEnv(env: RuntimeEnv): void {
 }
 
 export function runtimeEnv(): RuntimeEnv {
-  if (!boundEnv) throw new Error("Runtime bindings are not available.");
+  if (!boundEnv?.DB) throw new Error("Member service is not configured yet.");
   return boundEnv;
 }
 
