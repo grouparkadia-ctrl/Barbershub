@@ -22,6 +22,7 @@ test("keeps the member portal unlisted and excluded from search indexing", async
 
 test("uses the complete approved pricing model", async () => {
   const plans = await source("functions/_shared/os-plans.ts");
+  const client = await source("chair-os-source/BookingOS.tsx");
 
   for (const name of [
     "Hourly access",
@@ -38,6 +39,9 @@ test("uses the complete approved pricing model", async () => {
   assert.match(plans, /priceCents:\s*3500/);
   assert.match(plans, /priceCents:\s*77000/);
   assert.match(plans, /priceCents:\s*125000/);
+  assert.match(plans, /hidden:\s*true/);
+  assert.match(client, /isAdmin \? plans : plans\.filter\(\(plan\) => !plan\.hidden\)/);
+  assert.match(client, /isAdmin \|\| !plan\?\.hidden/);
 });
 
 test("protects bookings, PIN access, and login attempts", async () => {

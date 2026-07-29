@@ -393,7 +393,7 @@ export default function BookingOS() {
         </section>
       )}
 
-      <PlanLegend plans={plans} />
+      <PlanLegend plans={isAdmin ? plans : plans.filter((plan) => !plan.hidden)} />
 
       {modal === "member" && (
         <MemberModal
@@ -632,16 +632,17 @@ function Calendar({
                   ) : (
                     items.map((booking) => {
                       const plan = planMap[booking.plan_key];
+                      const visiblePlan = isAdmin || !plan?.hidden ? plan : undefined;
                       const canCancel = isAdmin || booking.user_id === currentUserId;
                       return (
                         <article
                           className="booking-chip"
                           key={booking.id}
-                          style={{ borderLeftColor: plan?.color ?? "#ef4444" }}
+                          style={{ borderLeftColor: visiblePlan?.color ?? "#64748b" }}
                         >
                           <strong>{booking.user_name}</strong>
                           <span>{minutesLabel(booking.start_min)}–{minutesLabel(booking.end_min)}</span>
-                          <small>{plan?.shortName ?? booking.plan_key}</small>
+                          <small>{visiblePlan?.shortName ?? (isAdmin ? booking.plan_key : "Reserved")}</small>
                           {canCancel && (
                             <button
                               onClick={() =>
@@ -679,7 +680,12 @@ function Calendar({
                       <button
                         key={booking.id}
                         className="mobile-booking"
-                        style={{ borderColor: planMap[booking.plan_key]?.color }}
+                        style={{
+                          borderColor:
+                            isAdmin || !planMap[booking.plan_key]?.hidden
+                              ? planMap[booking.plan_key]?.color
+                              : "#64748b",
+                        }}
                         onClick={() =>
                           (isAdmin || booking.user_id === currentUserId) &&
                           window.confirm("Cancel this booking and release the chair?") &&
