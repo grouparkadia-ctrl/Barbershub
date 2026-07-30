@@ -86,6 +86,16 @@ export function ensureSchema(): Promise<void> {
         paid_at TEXT,
         created_at TEXT NOT NULL
       )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS member_addons (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        addon_key TEXT NOT NULL CHECK(addon_key IN ('priority-calendar')),
+        start_date TEXT NOT NULL,
+        end_date TEXT NOT NULL,
+        price_cents INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      )`),
       db.prepare(`CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -110,8 +120,11 @@ export function ensureSchema(): Promise<void> {
       db.prepare("CREATE INDEX IF NOT EXISTS bookings_user_idx ON bookings(user_id)"),
       db.prepare("CREATE INDEX IF NOT EXISTS transactions_user_idx ON transactions(user_id)"),
       db.prepare("CREATE INDEX IF NOT EXISTS memberships_user_idx ON memberships(user_id)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS member_addons_user_idx ON member_addons(user_id, start_date, end_date)"),
       db.prepare("INSERT OR IGNORE INTO settings(key, value) VALUES('capacity_target', '128')"),
       db.prepare("INSERT OR IGNORE INTO settings(key, value) VALUES('monthly_cost_cents', '200000')"),
+      db.prepare("UPDATE memberships SET plan_key = 'flex-20' WHERE plan_key = 'shared'"),
+      db.prepare("UPDATE bookings SET plan_key = 'flex-20' WHERE plan_key = 'shared'"),
     ]);
   })();
   return schemaReady;

@@ -12,7 +12,9 @@ import {
 import {
   CHAIR_COUNT,
   CLOSE_MIN,
+  EARLY_OPEN_MIN,
   isPlanKey,
+  LATE_CLOSE_MIN,
   OPEN_MIN,
   PLANS,
   SLOT_MINUTES,
@@ -23,6 +25,12 @@ const COOKIE_PATH = "/chair-access-bh";
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_LOCK_MS = 15 * 60 * 1000;
 const LOGIN_MAX_FAILURES = 5;
+const STANDARD_BOOKING_WINDOW_DAYS = 21;
+const PRIORITY_BOOKING_WINDOW_DAYS = 30;
+const PRIORITY_CALENDAR_PRICE_CENTS = 5000;
+const PRIORITY_CALENDAR_LIMIT = 3;
+const EXTENSION_NOTICE_MS = 24 * 60 * 60 * 1000;
+const RIGA_TIME_ZONE = "Europe/Riga";
 
 type SessionUser = {
   id: string;
@@ -174,6 +182,89 @@ function validDate(value: unknown): string {
   return date;
 }
 
+function dateInRiga(value = new Date()): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: RIGA_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .formatToParts(value)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  ) as Record<string, string>;
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function daysFromToday(date: string): number {
+  const today = dateInRiga();
+  return Math.round(
+    (Date.parse(`${date}T12:00:00Z`) - Date.parse(`${today}T12:00:00Z`)) /
+      86_400_000,
+  );
+}
+
+function zonedDateTimeEpoch(date: string, minutes: number): number {
+  const [year, month, day] = date.split("-").map(Number);
+  const hour = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const targetAsUtc = Date.UTC(year, month - 1, day, hour, minute);
+  let guess = targetAsUtc;
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: RIGA_TIME_ZONE,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  for (let iteration = 0; iteration < 3; iteration += 1) {
+    const parts = Object.fromEntries(
+      formatter
+        .formatToParts(new Date(guess))
+        .filter((part) => part.type !== "literal")
+        .map((part) => [part.type, Number(part.value)]),
+    ) as Record<string, number>;
+    const localAsUtc = Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+    );
+    guess += targetAsUtc - localAsUtc;
+  }
+  return guess;
+}
+
+async function hasPriorityCalendar(userId: string, date: string): Promise<boolean> {
+  const row = await runtimeEnv().DB.prepare(
+    `SELECT id FROM member_addons
+     WHERE user_id = ? AND addon_key = 'priority-calendar' AND status = 'active'
+       AND start_date <= ? AND end_date >= ?
+     LIMIT 1`,
+  ).bind(userId, date, date).first<{ id: string }>();
+  return Boolean(row);
+}
+
+async function assertMemberBookingWindow(userId: string, date: string): Promise<void> {
+  const distance = daysFromToday(date);
+  if (distance < 0) throw new Error("Past dates cannot be booked.");
+  const priority = await hasPriorityCalendar(userId, date);
+  const limit = priority
+    ? PRIORITY_BOOKING_WINDOW_DAYS
+    : STANDARD_BOOKING_WINDOW_DAYS;
+  if (distance > limit) {
+    throw new Error(
+      priority
+        ? "Priority Calendar allows bookings up to 30 days ahead."
+        : "Standard calendar access allows bookings up to 21 days ahead.",
+    );
+  }
+}
+
 function validChair(value: unknown, allowAuto = false): number {
   const chair = Number(value);
   if (allowAuto && chair === 0) return 0;
@@ -185,13 +276,13 @@ function validChair(value: unknown, allowAuto = false): number {
 
 function slotNumbers(startMin: number, endMin: number): number[] {
   if (
-    startMin < OPEN_MIN ||
-    endMin > CLOSE_MIN ||
+    startMin < EARLY_OPEN_MIN ||
+    endMin > LATE_CLOSE_MIN ||
     startMin >= endMin ||
     startMin % SLOT_MINUTES !== 0 ||
     endMin % SLOT_MINUTES !== 0
   ) {
-    throw new Error("Bookings must use 30-minute steps between 09:00 and 21:00.");
+    throw new Error("Bookings must use 30-minute steps between 06:00 and 23:00.");
   }
   const slots: number[] = [];
   for (let minute = startMin; minute < endMin; minute += SLOT_MINUTES) {
@@ -292,7 +383,14 @@ function auditStatement(
 async function appState(request: Request, user: SessionUser, month: string) {
   const { start, end } = monthRange(month);
   const db = runtimeEnv().DB;
-  const [usersResult, membershipsResult, bookingResult, settingsResult, transactionResult] =
+  const [
+    usersResult,
+    membershipsResult,
+    bookingResult,
+    settingsResult,
+    transactionResult,
+    addonResult,
+  ] =
     await Promise.all([
       user.role === "admin"
         ? db.prepare(
@@ -320,6 +418,13 @@ async function appState(request: Request, user: SessionUser, month: string) {
            AND t.status != 'cancelled'
            AND (? = 'admin' OR t.user_id = ?)
          ORDER BY t.created_at DESC`,
+      ).bind(start, end, user.role, user.id).all(),
+      db.prepare(
+        `SELECT a.*, u.name AS user_name
+         FROM member_addons a JOIN users u ON u.id = a.user_id
+         WHERE a.end_date >= ? AND a.start_date < ? AND a.status = 'active'
+           AND (? = 'admin' OR a.user_id = ?)
+         ORDER BY a.start_date DESC`,
       ).bind(start, end, user.role, user.id).all(),
     ]);
 
@@ -361,6 +466,7 @@ async function appState(request: Request, user: SessionUser, month: string) {
     memberships: membershipsResult.results ?? [],
     bookings,
     transactions,
+    addons: addonResult.results ?? [],
     settings: { monthlyCost, capacityTarget },
     finance:
       user.role === "admin"
@@ -520,7 +626,10 @@ export async function POST(request: Request) {
       const weekdays = Array.isArray(body.weekdays)
         ? body.weekdays.map(Number).filter((value) => value >= 0 && value <= 6)
         : [];
-      const shiftKey = isPlanKey(body.shiftKey) ? body.shiftKey : "day-pass";
+      const shiftKey =
+        body.shiftKey === "morning" || body.shiftKey === "evening"
+          ? body.shiftKey
+          : "day-pass";
       const shift = PLANS[shiftKey];
       const startMin = plan.dedicated ? OPEN_MIN : shift.startMin;
       const endMin = plan.dedicated ? CLOSE_MIN : shift.endMin;
@@ -646,15 +755,79 @@ export async function POST(request: Request) {
       return json({ ok: true, membershipId, scheduled: candidates.length });
     }
 
+    if (action === "assign_addon") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const userId = String(body.userId ?? "");
+      const member = await db.prepare(
+        "SELECT id FROM users WHERE id = ? AND role = 'member' AND active = 1",
+      ).bind(userId).first<{ id: string }>();
+      if (!member) return fail("Choose an active member.");
+      const startDate = validDate(body.startDate);
+      const endDate = addDays(startDate, 29);
+      const existing = await db.prepare(
+        `SELECT id FROM member_addons
+         WHERE user_id = ? AND addon_key = 'priority-calendar' AND status = 'active'
+           AND start_date <= ? AND end_date >= ?
+         LIMIT 1`,
+      ).bind(userId, endDate, startDate).first<{ id: string }>();
+      if (existing) return fail("This member already has Priority Calendar for that period.");
+      const activePriority = await db.prepare(
+        `SELECT COUNT(DISTINCT user_id) AS count FROM member_addons
+         WHERE user_id != ? AND addon_key = 'priority-calendar' AND status = 'active'
+           AND start_date <= ? AND end_date >= ?`,
+      ).bind(userId, endDate, startDate).first<{ count: number }>();
+      if (Number(activePriority?.count ?? 0) >= PRIORITY_CALENDAR_LIMIT) {
+        return fail("All three Priority Calendar places are already reserved for that period.");
+      }
+      const addonId = crypto.randomUUID();
+      const transactionId = crypto.randomUUID();
+      await db.batch([
+        db.prepare(
+          `INSERT INTO member_addons(
+            id, user_id, addon_key, start_date, end_date, price_cents, status, created_at
+          ) VALUES(?, ?, 'priority-calendar', ?, ?, ?, 'active', ?)`,
+        ).bind(
+          addonId,
+          userId,
+          startDate,
+          endDate,
+          PRIORITY_CALENDAR_PRICE_CENTS,
+          nowIso(),
+        ),
+        db.prepare(
+          `INSERT INTO transactions(
+            id, user_id, kind, reference_id, description, amount_cents,
+            status, due_date, paid_at, created_at
+          ) VALUES(?, ?, 'addon', ?, 'Priority Calendar · 30-day booking window', ?, 'due', ?, NULL, ?)`,
+        ).bind(
+          transactionId,
+          userId,
+          addonId,
+          PRIORITY_CALENDAR_PRICE_CENTS,
+          startDate,
+          nowIso(),
+        ),
+        auditStatement(user.id, "assign", "addon", addonId, {
+          userId,
+          addonKey: "priority-calendar",
+          startDate,
+          endDate,
+        }),
+      ]);
+      return json({ ok: true, addonId });
+    }
+
     if (action === "create_booking") {
       const requestedUserId =
         user.role === "admin" ? String(body.userId ?? user.id) : user.id;
       const planKey = body.planKey;
       if (!isPlanKey(planKey) || PLANS[planKey].kind !== "payg") {
-        return fail("Choose Hourly, Morning, Evening or Day Pass.");
+        return fail("Choose Hourly, Morning, Evening, Day Pass or an access extension.");
       }
       const plan = PLANS[planKey];
       const date = validDate(body.date);
+      if (date < dateInRiga()) return fail("Past dates cannot be booked.");
+      if (user.role !== "admin") await assertMemberBookingWindow(requestedUserId, date);
       const requestedChair = validChair(body.chairId ?? 0, true);
       let startMin = plan.startMin;
       let endMin = plan.endMin;
@@ -664,13 +837,40 @@ export async function POST(request: Request) {
         endMin = Number(body.endMin);
         const duration = endMin - startMin;
         slotNumbers(startMin, endMin);
+        if (startMin < OPEN_MIN || endMin > CLOSE_MIN) {
+          return fail("Hourly access is available between 09:00 and 21:00.");
+        }
         if (duration < 120 || duration > 240) {
           return fail("Hourly access must be between 2 and 4 hours.");
         }
         amountCents = Math.round((duration / 60) * plan.priceCents);
       }
+      let extensionChair = 0;
+      if (plan.requiresBaseBooking) {
+        if (zonedDateTimeEpoch(date, startMin) - Date.now() < EXTENSION_NOTICE_MS) {
+          return fail("Access extensions require at least 24 hours' notice.");
+        }
+        const baseBooking = await db.prepare(
+          `SELECT chair_id FROM bookings
+           WHERE user_id = ? AND date = ? AND status = 'confirmed'
+             AND start_min < ? AND end_min > ?
+           ORDER BY start_min
+           LIMIT 1`,
+        ).bind(requestedUserId, date, CLOSE_MIN, OPEN_MIN).first<{ chair_id: number }>();
+        if (!baseBooking) {
+          return fail("Book a regular working period on that date before adding an extension.");
+        }
+        extensionChair = Number(baseBooking.chair_id);
+        if (requestedChair && requestedChair !== extensionChair) {
+          return fail(`This extension must use Chair ${extensionChair}, matching the existing booking.`);
+        }
+      }
       const occupied = await occupiedSlots(date, date);
-      const chairs = requestedChair ? [requestedChair] : [1, 2, 3, 4, 5];
+      const chairs = extensionChair
+        ? [extensionChair]
+        : requestedChair
+          ? [requestedChair]
+          : [1, 2, 3, 4, 5];
       const chair = chairs.find((chairId) =>
         chairIsFree(occupied, chairId, date, startMin, endMin),
       );
@@ -726,6 +926,10 @@ export async function POST(request: Request) {
         return fail("No plan days remain.");
       }
       const date = validDate(body.date);
+      if (date < dateInRiga()) return fail("Past dates cannot be booked.");
+      if (user.role !== "admin") {
+        await assertMemberBookingWindow(String(membership.user_id), date);
+      }
       if (date < String(membership.start_date) || date > String(membership.end_date)) {
         return fail("Date is outside this plan term.");
       }

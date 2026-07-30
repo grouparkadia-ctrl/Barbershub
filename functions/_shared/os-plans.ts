@@ -3,9 +3,11 @@ export type PlanKey =
   | "morning"
   | "evening"
   | "day-pass"
+  | "early-extension"
+  | "late-extension"
   | "flex-10"
   | "flex-15"
-  | "shared"
+  | "flex-20"
   | "pro";
 
 export type Plan = {
@@ -20,10 +22,13 @@ export type Plan = {
   endMin: number;
   dedicated?: boolean;
   hidden?: boolean;
+  requiresBaseBooking?: boolean;
 };
 
+export const EARLY_OPEN_MIN = 6 * 60;
 export const OPEN_MIN = 9 * 60;
 export const CLOSE_MIN = 21 * 60;
+export const LATE_CLOSE_MIN = 23 * 60;
 export const SLOT_MINUTES = 30;
 export const CHAIR_COUNT = 5;
 
@@ -72,6 +77,30 @@ export const PLANS: Record<PlanKey, Plan> = {
     startMin: OPEN_MIN,
     endMin: CLOSE_MIN,
   },
+  "early-extension": {
+    key: "early-extension",
+    name: "Early access extension",
+    shortName: "06–09",
+    priceCents: 2000,
+    color: "#eab308",
+    kind: "payg",
+    credits: 0,
+    startMin: EARLY_OPEN_MIN,
+    endMin: OPEN_MIN,
+    requiresBaseBooking: true,
+  },
+  "late-extension": {
+    key: "late-extension",
+    name: "Late access extension",
+    shortName: "21–23",
+    priceCents: 2000,
+    color: "#a855f7",
+    kind: "payg",
+    credits: 0,
+    startMin: CLOSE_MIN,
+    endMin: LATE_CLOSE_MIN,
+    requiresBaseBooking: true,
+  },
   "flex-10": {
     key: "flex-10",
     name: "Flex 10",
@@ -94,11 +123,11 @@ export const PLANS: Record<PlanKey, Plan> = {
     startMin: OPEN_MIN,
     endMin: CLOSE_MIN,
   },
-  shared: {
-    key: "shared",
-    name: "Full-Time Shared",
-    shortName: "Shared",
-    priceCents: 77000,
+  "flex-20": {
+    key: "flex-20",
+    name: "Flex 20",
+    shortName: "F20",
+    priceCents: 65000,
     color: "#22c55e",
     kind: "membership",
     credits: 20,
