@@ -55,6 +55,17 @@ type Transaction = {
   due_date: string;
 };
 
+type Addon = {
+  id: string;
+  user_id: string;
+  user_name: string;
+  addon_key: "priority-calendar";
+  start_date: string;
+  end_date: string;
+  price_cents: number;
+  status: string;
+};
+
 type State = {
   setupRequired: boolean;
   session: Session | null;
@@ -63,6 +74,7 @@ type State = {
   memberships?: Membership[];
   bookings?: Booking[];
   transactions?: Transaction[];
+  addons?: Addon[];
   settings?: { monthlyCost: number; capacityTarget: number };
   finance?: {
     contracted: number;
@@ -79,6 +91,7 @@ type State = {
 type ModalName =
   | "member"
   | "assign"
+  | "addon"
   | "booking"
   | "plan-day"
   | "settings"
@@ -253,6 +266,7 @@ export default function BookingOS() {
   const memberships = state.memberships ?? [];
   const bookings = state.bookings ?? [];
   const transactions = state.transactions ?? [];
+  const addons = state.addons ?? [];
   const isAdmin = state.session.role === "admin";
   const planMap = Object.fromEntries(plans.map((plan) => [plan.key, plan])) as Record<
     PlanKey,
@@ -321,7 +335,12 @@ export default function BookingOS() {
       )}
 
       {!isAdmin && (
-        <MemberStrip memberships={myMemberships} transactions={transactions} plans={planMap} />
+        <MemberStrip
+          memberships={myMemberships}
+          transactions={transactions}
+          addons={addons.filter((addon) => addon.user_id === state.session?.id)}
+          plans={planMap}
+        />
       )}
 
       <section className="action-row">
@@ -342,6 +361,9 @@ export default function BookingOS() {
               </button>
               <button className="secondary-button" onClick={() => setModal("assign")}>
                 Assign plan
+              </button>
+              <button className="secondary-button" onClick={() => setModal("addon")}>
+                + Priority
               </button>
             </>
           )}
@@ -383,7 +405,12 @@ export default function BookingOS() {
 
       {isAdmin && (
         <section className="admin-grid">
-          <MemberList users={users} memberships={memberships} planMap={planMap} />
+          <MemberList
+            users={users}
+            memberships={memberships}
+            addons={addons}
+            planMap={planMap}
+          />
           <TransactionList
             transactions={transactions}
             onPaid={(transactionId) =>
@@ -409,6 +436,16 @@ export default function BookingOS() {
           busy={busy}
           close={() => setModal(null)}
           submit={(payload) => void run("assign_plan", payload, "Plan assigned and calendar filled.")}
+        />
+      )}
+      {modal === "addon" && (
+        <AddonModal
+          users={users.filter((user) => user.active && user.role === "member")}
+          busy={busy}
+          close={() => setModal(null)}
+          submit={(payload) =>
+            void run("assign_addon", payload, "Priority Calendar assigned.")
+          }
         />
       )}
       {modal === "booking" && (
@@ -551,13 +588,16 @@ function FinanceStrip({
 function MemberStrip({
   memberships,
   transactions,
+  addons,
   plans,
 }: {
   memberships: Membership[];
   transactions: Transaction[];
+  addons: Addon[];
   plans: Record<PlanKey, Plan>;
 }) {
   const active = memberships.find((membership) => membership.status === "active");
+  const priority = addons.find((addon) => addon.status === "active");
   const due = transactions
     .filter((transaction) => transaction.status === "due")
     .reduce((sum, transaction) => sum + transaction.amount_cents, 0);
@@ -570,6 +610,10 @@ function MemberStrip({
       <div>
         <span>Remaining plan days</span>
         <strong>{active ? active.credits_total - active.credits_used : "—"}</strong>
+      </div>
+      <div>
+        <span>Calendar access</span>
+        <strong>{priority ? "Priority · 30 days" : "Standard · 21 days"}</strong>
       </div>
       <div>
         <span>Amount due</span>
@@ -713,10 +757,12 @@ function Calendar({
 function MemberList({
   users,
   memberships,
+  addons,
   planMap,
 }: {
   users: User[];
   memberships: Membership[];
+  addons: Addon[];
   planMap: Record<PlanKey, Plan>;
 }) {
   return (
@@ -727,11 +773,17 @@ function MemberList({
           const membership = memberships.find(
             (item) => item.user_id === user.id && item.status === "active",
           );
+          const priority = addons.some(
+            (item) => item.user_id === user.id && item.status === "active",
+          );
           return (
             <article key={user.id}>
               <div className="avatar">{user.name.slice(0, 2).toUpperCase()}</div>
               <div><strong>{user.name}</strong><small>Code {user.access_code}</small></div>
-              <span className="plan-pill">{membership ? planMap[membership.plan_key]?.shortName : "PAYG"}</span>
+              <span className="plan-pill">
+                {membership ? planMap[membership.plan_key]?.shortName : "PAYG"}
+                {priority ? " · PRIORITY" : ""}
+              </span>
             </article>
           );
         })}
@@ -859,6 +911,52 @@ function AssignModal({
   );
 }
 
+function AddonModal({
+  users,
+  busy,
+  close,
+  submit,
+}: {
+  users: User[];
+  busy: boolean;
+  close: () => void;
+  submit: (payload: Record<string, unknown>) => void;
+}) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    submit(Object.fromEntries(new FormData(event.currentTarget)));
+  }
+  return (
+    <Modal
+      title="Assign Priority Calendar"
+      intro="Adds a 30-day booking window for €50. Standard members can book 21 days ahead. Maximum three active Priority members."
+      close={close}
+    >
+      <form className="modal-form" onSubmit={onSubmit}>
+        <label>
+          Member
+          <select name="userId" required>
+            {users.map((user) => (
+              <option key={user.id} value={user.id}>{user.name}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Start date
+          <input name="startDate" type="date" defaultValue={localDate()} required />
+        </label>
+        <p className="form-note">
+          Priority gives earlier access to the same available calendar. It does not add plan
+          days, reserve a specific chair, or override confirmed bookings.
+        </p>
+        <button className="primary-button wide" disabled={busy || users.length === 0}>
+          Add Priority · €50
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
 function BookingModal({
   users,
   plans,
@@ -880,7 +978,11 @@ function BookingModal({
     submit(Object.fromEntries(new FormData(event.currentTarget)));
   }
   return (
-    <Modal title="Quick booking" intro="Hourly, shift and Day Pass bookings create revenue and block the chair instantly." close={close}>
+    <Modal
+      title="Quick booking"
+      intro="Book hourly access, a shift, a Day Pass or an extension. Extensions need a regular booking on the same day and 24 hours' notice."
+      close={close}
+    >
       <form className="modal-form" onSubmit={onSubmit}>
         <label>Member<select name="userId" required>{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
         <label>Model<select name="planKey" value={planKey} onChange={(event) => setPlanKey(event.target.value as PlanKey)}>{plans.map((plan) => <option key={plan.key} value={plan.key}>{plan.name} · {plan.key === "hourly" ? "€10/hour" : money(plan.priceCents)}</option>)}</select></label>
@@ -893,6 +995,12 @@ function BookingModal({
             <label>Start<select name="startMin" defaultValue="540">{Array.from({length:17},(_,i)=>540+i*30).map((minute)=><option value={minute} key={minute}>{minutesLabel(minute)}</option>)}</select></label>
             <label>End<select name="endMin" defaultValue="660">{Array.from({length:17},(_,i)=>660+i*30).filter((minute)=>minute<=1260).map((minute)=><option value={minute} key={minute}>{minutesLabel(minute)}</option>)}</select></label>
           </div>
+        )}
+        {(planKey === "early-extension" || planKey === "late-extension") && (
+          <p className="form-note">
+            The extension automatically uses the chair from the member&apos;s existing
+            booking. Book early and late separately when both are needed (€40 total).
+          </p>
         )}
         <button className="primary-button wide" disabled={busy}>Book and add payment</button>
       </form>
@@ -918,7 +1026,11 @@ function PlanDayModal({
     submit(Object.fromEntries(new FormData(event.currentTarget)));
   }
   return (
-    <Modal title="Book a plan day" intro="Choose a date and the system will assign an available chair." close={close}>
+    <Modal
+      title="Book a plan day"
+      intro="Choose a date and the system will assign an available chair. Standard access opens 21 days ahead; Priority opens 30 days ahead."
+      close={close}
+    >
       <form className="modal-form" onSubmit={onSubmit}>
         <label>Plan<select name="membershipId">{memberships.map((membership) => <option key={membership.id} value={membership.id}>{planMap[membership.plan_key]?.name} · {membership.credits_total-membership.credits_used} remaining</option>)}</select></label>
         <div className="form-row">

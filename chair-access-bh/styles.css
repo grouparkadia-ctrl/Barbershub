@@ -327,7 +327,7 @@ select:hover {
 
 .member-strip {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
@@ -691,6 +691,13 @@ select:hover {
 
 .modal-form {
   padding: 0 24px 26px;
+}
+
+.form-note {
+  margin: 4px 0 18px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.55;
 }
 
 .form-row {

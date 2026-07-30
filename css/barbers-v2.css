@@ -522,6 +522,45 @@
     color: #fff;
 }
 
+.v2-price-meta {
+    display: block;
+    min-height: 44px;
+    margin: 0 0 14px;
+    color: #e0e0e0;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.v2-pricing-actions {
+    display: grid;
+    gap: 18px;
+    align-items: center;
+    margin-top: 26px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255, 255, 255, .12);
+}
+
+.v2-pricing-actions p {
+    max-width: 680px;
+    margin: 0;
+    color: #d5d5d5;
+    font-size: 16px;
+    line-height: 1.55;
+}
+
+.v2-member-option-grid {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.v2-member-option-grid article {
+    min-height: 190px;
+}
+
+.v2-member-option-grid strong {
+    font-size: 21px;
+}
+
 .v2-gallery {
     display: grid;
     gap: 14px;
