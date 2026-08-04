@@ -4,5 +4,14 @@
   X-Content-Type-Options: nosniff
   Permissions-Policy: camera=(), microphone=(), geolocation=()
 
+/chair-access-bh/
+  Cache-Control: no-cache, must-revalidate
+
+/chair-access-bh/app.js
+  Cache-Control: no-cache, must-revalidate
+
+/chair-access-bh/styles.css
+  Cache-Control: no-cache, must-revalidate
+
 /chair-access-bh/api
   Cache-Control: no-store, private

@@ -16,6 +16,8 @@ test("keeps the member portal unlisted and excluded from search indexing", async
 
   assert.match(html, /noindex, nofollow, noarchive, nosnippet/);
   assert.match(headers, /X-Robots-Tag: noindex, nofollow, noarchive, nosnippet/);
+  assert.match(headers, /\/chair-access-bh\/app\.js[\s\S]*Cache-Control: no-cache, must-revalidate/);
+  assert.match(headers, /\/chair-access-bh\/styles\.css[\s\S]*Cache-Control: no-cache, must-revalidate/);
   assert.doesNotMatch(publicHome, /chair-access-bh/);
   assert.doesNotMatch(barberPage, /chair-access-bh/);
 });
