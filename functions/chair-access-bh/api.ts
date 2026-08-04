@@ -640,7 +640,9 @@ export async function POST(request: Request) {
       const name = String(body.name ?? "").trim();
       if (name.length < 2) return fail("Enter the member name.");
       const accessCode = normalizeCode(body.accessCode);
-      if (accessCode.length < 4) return fail("Access code must contain at least 4 characters.");
+      if (accessCode.length < 4 && accessCode !== member.access_code) {
+        return fail("A new access code must contain at least 4 characters.");
+      }
       const duplicateCode = await db.prepare(
         "SELECT id FROM users WHERE access_code = ? AND id != ? LIMIT 1",
       ).bind(accessCode, memberId).first<{ id: string }>();

@@ -130,6 +130,7 @@ test("supports safe member, booking, plan, and payment corrections", async () =>
   assert.match(api, /UPDATE transactions SET description = \?, amount_cents = \?, due_date = \?/);
   assert.match(api, /UPDATE transactions SET status = 'cancelled'.*status = 'due'/s);
   assert.match(api, /This plan already has a booking on that date/);
+  assert.match(api, /accessCode\.length < 4 && accessCode !== member\.access_code/);
   assert.match(api, /cannot be permanently deleted\. Deactivate access instead/);
 
   for (const message of [
