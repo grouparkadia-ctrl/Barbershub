@@ -304,6 +304,20 @@ async function occupiedSlots(start: string, end: string): Promise<Set<string>> {
   );
 }
 
+async function occupiedSlotsExcluding(
+  start: string,
+  end: string,
+  bookingId: string,
+): Promise<Set<string>> {
+  const result = await runtimeEnv().DB.prepare(
+    `SELECT chair_id, date, slot FROM booking_slots
+     WHERE date >= ? AND date <= ? AND booking_id != ?`,
+  ).bind(start, end, bookingId).all<{ chair_id: number; date: string; slot: number }>();
+  return new Set(
+    (result.results ?? []).map((row) => keyFor(row.chair_id, row.date, row.slot)),
+  );
+}
+
 function chairIsFree(
   occupied: Set<string>,
   chair: number,
@@ -601,6 +615,10 @@ export async function POST(request: Request) {
       const pin = requirePin(body.pin);
       let accessCode = normalizeCode(body.accessCode);
       if (!accessCode) accessCode = randomAccessCode();
+      const duplicateCode = await db.prepare(
+        "SELECT id FROM users WHERE access_code = ? LIMIT 1",
+      ).bind(accessCode).first<{ id: string }>();
+      if (duplicateCode) return fail("That access code is already in use.", 409);
       const id = crypto.randomUUID();
       await db.batch([
         db.prepare(
@@ -610,6 +628,46 @@ export async function POST(request: Request) {
         auditStatement(user.id, "create", "user", id, { name, accessCode }),
       ]);
       return json({ ok: true, member: { id, name, accessCode } });
+    }
+
+    if (action === "update_member") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const memberId = String(body.memberId ?? "");
+      const member = await db.prepare(
+        "SELECT id, name, access_code FROM users WHERE id = ? AND role = 'member'",
+      ).bind(memberId).first<{ id: string; name: string; access_code: string }>();
+      if (!member) return fail("Member not found.", 404);
+      const name = String(body.name ?? "").trim();
+      if (name.length < 2) return fail("Enter the member name.");
+      const accessCode = normalizeCode(body.accessCode);
+      if (accessCode.length < 4) return fail("Access code must contain at least 4 characters.");
+      const duplicateCode = await db.prepare(
+        "SELECT id FROM users WHERE access_code = ? AND id != ? LIMIT 1",
+      ).bind(accessCode, memberId).first<{ id: string }>();
+      if (duplicateCode) return fail("That access code is already in use.", 409);
+      const newPin = String(body.newPin ?? "").trim();
+      const statements: D1PreparedStatement[] = [
+        db.prepare("UPDATE users SET name = ?, access_code = ? WHERE id = ? AND role = 'member'")
+          .bind(name, accessCode, memberId),
+      ];
+      if (newPin) {
+        statements.push(
+          db.prepare("UPDATE users SET pin_hash = ? WHERE id = ?")
+            .bind(await hashSecret(requirePin(newPin)), memberId),
+          db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(memberId),
+        );
+      }
+      statements.push(
+        auditStatement(user.id, "update", "user", memberId, {
+          oldName: member.name,
+          newName: name,
+          oldAccessCode: member.access_code,
+          newAccessCode: accessCode,
+          pinReset: Boolean(newPin),
+        }),
+      );
+      await db.batch(statements);
+      return json({ ok: true });
     }
 
     if (action === "assign_plan") {
@@ -622,6 +680,29 @@ export async function POST(request: Request) {
       const plan = PLANS[planKey];
       const startDate = validDate(body.startDate);
       const endDate = addDays(startDate, 29);
+      const member = await db.prepare(
+        "SELECT id, name FROM users WHERE id = ? AND role = 'member' AND active = 1",
+      ).bind(userId).first<{ id: string; name: string }>();
+      if (!member) return fail("Choose an active member.");
+      const existingMembership = await db.prepare(
+        `SELECT m.id, m.plan_key, m.start_date, m.end_date
+         FROM memberships m
+         WHERE m.user_id = ? AND m.status = 'active'
+           AND m.start_date <= ? AND m.end_date >= ?
+         ORDER BY m.created_at DESC LIMIT 1`,
+      ).bind(userId, endDate, startDate).first<{
+        id: string;
+        plan_key: PlanKey;
+        start_date: string;
+        end_date: string;
+      }>();
+      if (existingMembership) {
+        const existingPlan = PLANS[existingMembership.plan_key]?.name ?? existingMembership.plan_key;
+        return fail(
+          `${member.name} already has an active ${existingPlan} plan from ${existingMembership.start_date} to ${existingMembership.end_date}. Use its remaining days or cancel that plan before assigning another.`,
+          409,
+        );
+      }
       const preferredChair = validChair(body.preferredChair ?? 0, true);
       const weekdays = Array.isArray(body.weekdays)
         ? body.weekdays.map(Number).filter((value) => value >= 0 && value <= 6)
@@ -933,6 +1014,12 @@ export async function POST(request: Request) {
       if (date < String(membership.start_date) || date > String(membership.end_date)) {
         return fail("Date is outside this plan term.");
       }
+      const existingPlanDay = await db.prepare(
+        `SELECT id FROM bookings
+         WHERE membership_id = ? AND date = ? AND status = 'confirmed'
+         LIMIT 1`,
+      ).bind(membershipId, date).first<{ id: string }>();
+      if (existingPlanDay) return fail("This plan already has a booking on that date.", 409);
       const requestedChair = validChair(body.chairId ?? 0, true);
       const occupied = await occupiedSlots(date, date);
       const chairs = requestedChair ? [requestedChair] : [1, 2, 3, 4, 5];
@@ -967,6 +1054,146 @@ export async function POST(request: Request) {
       return json({ ok: true, bookingId, chair });
     }
 
+    if (action === "update_booking") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const bookingId = String(body.bookingId ?? "");
+      const booking = await db.prepare(
+        "SELECT * FROM bookings WHERE id = ? AND status = 'confirmed'",
+      ).bind(bookingId).first<Record<string, unknown>>();
+      if (!booking) return fail("Booking not found.", 404);
+
+      const date = validDate(body.date);
+      if (date < dateInRiga()) return fail("Past bookings cannot be edited.");
+      const planKey = String(booking.plan_key) as PlanKey;
+      const plan = PLANS[planKey];
+      if (!plan) return fail("Booking plan is not available.");
+      const requestedChair = validChair(body.chairId ?? booking.chair_id, true);
+      const notes = String(body.notes ?? "").trim().slice(0, 500);
+      let startMin = plan.startMin;
+      let endMin = plan.endMin;
+      let amountCents = Number(booking.amount_cents ?? 0);
+
+      if (booking.membership_id) {
+        const membership = await db.prepare(
+          "SELECT * FROM memberships WHERE id = ? AND status = 'active'",
+        ).bind(String(booking.membership_id)).first<Record<string, unknown>>();
+        if (!membership) return fail("The plan for this booking is no longer active.");
+        if (date < String(membership.start_date) || date > String(membership.end_date)) {
+          return fail("Date is outside this plan term.");
+        }
+        const duplicatePlanDay = await db.prepare(
+          `SELECT id FROM bookings
+           WHERE membership_id = ? AND date = ? AND status = 'confirmed' AND id != ?
+           LIMIT 1`,
+        ).bind(String(booking.membership_id), date, bookingId).first<{ id: string }>();
+        if (duplicatePlanDay) return fail("This plan already has another booking on that date.", 409);
+        startMin = Number(body.startMin ?? booking.start_min);
+        endMin = Number(body.endMin ?? booking.end_min);
+        slotNumbers(startMin, endMin);
+        if (startMin < OPEN_MIN || endMin > CLOSE_MIN) {
+          return fail("Plan bookings must stay between 09:00 and 21:00.");
+        }
+        amountCents = 0;
+      } else if (planKey === "hourly") {
+        startMin = Number(body.startMin);
+        endMin = Number(body.endMin);
+        const duration = endMin - startMin;
+        slotNumbers(startMin, endMin);
+        if (startMin < OPEN_MIN || endMin > CLOSE_MIN) {
+          return fail("Hourly access is available between 09:00 and 21:00.");
+        }
+        if (duration < 120 || duration > 240) {
+          return fail("Hourly access must be between 2 and 4 hours.");
+        }
+        amountCents = Math.round((duration / 60) * plan.priceCents);
+      }
+
+      let extensionChair = 0;
+      if (plan.requiresBaseBooking) {
+        if (zonedDateTimeEpoch(date, startMin) - Date.now() < EXTENSION_NOTICE_MS) {
+          return fail("Access extensions require at least 24 hours' notice.");
+        }
+        const baseBooking = await db.prepare(
+          `SELECT chair_id FROM bookings
+           WHERE user_id = ? AND date = ? AND status = 'confirmed' AND id != ?
+             AND start_min < ? AND end_min > ?
+           ORDER BY start_min LIMIT 1`,
+        ).bind(String(booking.user_id), date, bookingId, CLOSE_MIN, OPEN_MIN)
+          .first<{ chair_id: number }>();
+        if (!baseBooking) {
+          return fail("Book a regular working period on that date before adding an extension.");
+        }
+        extensionChair = Number(baseBooking.chair_id);
+        if (requestedChair && requestedChair !== extensionChair) {
+          return fail(`This extension must use Chair ${extensionChair}, matching the existing booking.`);
+        }
+      }
+
+      const occupied = await occupiedSlotsExcluding(date, date, bookingId);
+      const chairs = extensionChair
+        ? [extensionChair]
+        : requestedChair
+          ? [requestedChair]
+          : [1, 2, 3, 4, 5];
+      const chair = chairs.find((chairId) =>
+        chairIsFree(occupied, chairId, date, startMin, endMin),
+      );
+      if (!chair) return fail("No chair is free for that time.", 409);
+
+      const transaction = booking.membership_id
+        ? null
+        : await db.prepare(
+            "SELECT id, status, amount_cents FROM transactions WHERE kind = 'booking' AND reference_id = ? AND status != 'cancelled'",
+          ).bind(bookingId).first<{ id: string; status: string; amount_cents: number }>();
+      if (transaction?.status === "paid" && Number(transaction.amount_cents) !== amountCents) {
+        return fail("This booking is already paid. Keep the same duration or correct the payment first.");
+      }
+
+      const slots = slotNumbers(startMin, endMin);
+      const slotValues = slots.map(() => "(?, ?, ?, ?)").join(", ");
+      const slotParams = slots.flatMap((slot) => [bookingId, chair, date, slot]);
+      const statements: D1PreparedStatement[] = [
+        db.prepare("DELETE FROM booking_slots WHERE booking_id = ?").bind(bookingId),
+        db.prepare(
+          `UPDATE bookings SET chair_id = ?, date = ?, start_min = ?, end_min = ?,
+             amount_cents = ?, capacity = ?, notes = ? WHERE id = ?`,
+        ).bind(
+          chair,
+          date,
+          startMin,
+          endMin,
+          amountCents,
+          (endMin - startMin) / 720,
+          notes,
+          bookingId,
+        ),
+        db.prepare(
+          `INSERT INTO booking_slots(booking_id, chair_id, date, slot) VALUES ${slotValues}`,
+        ).bind(...slotParams),
+      ];
+      if (transaction) {
+        statements.push(
+          db.prepare(
+            `UPDATE transactions SET description = ?, amount_cents = ?, due_date = ?
+             WHERE id = ? AND status != 'cancelled'`,
+          ).bind(`${plan.name} · Chair ${chair}`, amountCents, date, transaction.id),
+        );
+      }
+      statements.push(
+        auditStatement(user.id, "update", "booking", bookingId, {
+          from: {
+            date: booking.date,
+            chair: booking.chair_id,
+            startMin: booking.start_min,
+            endMin: booking.end_min,
+          },
+          to: { date, chair, startMin, endMin },
+        }),
+      );
+      await db.batch(statements);
+      return json({ ok: true, bookingId, chair });
+    }
+
     if (action === "cancel_booking") {
       const bookingId = String(body.bookingId ?? "");
       const booking = await db.prepare(
@@ -976,7 +1203,7 @@ export async function POST(request: Request) {
       if (user.role !== "admin" && booking.user_id !== user.id) {
         return fail("You can cancel only your own booking.", 403);
       }
-      if (user.role !== "admin" && String(booking.date) < new Date().toISOString().slice(0, 10)) {
+      if (user.role !== "admin" && String(booking.date) < dateInRiga()) {
         return fail("Past bookings cannot be cancelled.");
       }
       const statements: D1PreparedStatement[] = [
@@ -1003,6 +1230,67 @@ export async function POST(request: Request) {
       return json({ ok: true });
     }
 
+    if (action === "cancel_membership") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const membershipId = String(body.membershipId ?? "");
+      const membership = await db.prepare(
+        `SELECT m.*, u.name AS user_name
+         FROM memberships m JOIN users u ON u.id = m.user_id
+         WHERE m.id = ? AND m.status = 'active'`,
+      ).bind(membershipId).first<Record<string, unknown>>();
+      if (!membership) return fail("Active plan not found.", 404);
+      const today = dateInRiga();
+      const pastUsage = await db.prepare(
+        `SELECT COUNT(*) AS count FROM bookings
+         WHERE membership_id = ? AND status = 'confirmed' AND date < ?`,
+      ).bind(membershipId, today).first<{ count: number }>();
+      const transaction = await db.prepare(
+        "SELECT id, status FROM transactions WHERE kind = 'membership' AND reference_id = ? AND status != 'cancelled'",
+      ).bind(membershipId).first<{ id: string; status: string }>();
+      const canCancelCharge = transaction?.status === "due" && Number(pastUsage?.count ?? 0) === 0;
+      const statements: D1PreparedStatement[] = [
+        db.prepare(
+          `DELETE FROM booking_slots WHERE booking_id IN (
+             SELECT id FROM bookings
+             WHERE membership_id = ? AND status = 'confirmed' AND date >= ?
+           )`,
+        ).bind(membershipId, today),
+        db.prepare(
+          "UPDATE bookings SET status = 'cancelled' WHERE membership_id = ? AND status = 'confirmed' AND date >= ?",
+        ).bind(membershipId, today),
+        db.prepare("UPDATE memberships SET status = 'cancelled' WHERE id = ?")
+          .bind(membershipId),
+      ];
+      if (canCancelCharge && transaction) {
+        statements.push(
+          db.prepare("UPDATE transactions SET status = 'cancelled' WHERE id = ? AND status = 'due'")
+            .bind(transaction.id),
+        );
+      }
+      statements.push(
+        auditStatement(user.id, "cancel", "membership", membershipId, {
+          userId: membership.user_id,
+          planKey: membership.plan_key,
+          futureBookingsReleased: true,
+          chargeCancelled: canCancelCharge,
+          pastUsage: Number(pastUsage?.count ?? 0),
+          transactionStatus: transaction?.status ?? null,
+        }),
+      );
+      await db.batch(statements);
+      return json({
+        ok: true,
+        chargeCancelled: canCancelCharge,
+        chargeRetainedReason: canCancelCharge
+          ? null
+          : transaction?.status === "paid"
+            ? "The plan payment was already marked paid."
+            : Number(pastUsage?.count ?? 0) > 0
+              ? "Past plan days exist, so the plan charge was retained."
+              : "No open plan charge was found.",
+      });
+    }
+
     if (action === "mark_paid") {
       if (user.role !== "admin") return fail("Administrator access required.", 403);
       const transactionId = String(body.transactionId ?? "");
@@ -1011,6 +1299,18 @@ export async function POST(request: Request) {
           "UPDATE transactions SET status = 'paid', paid_at = ? WHERE id = ? AND status = 'due'",
         ).bind(nowIso(), transactionId),
         auditStatement(user.id, "mark_paid", "transaction", transactionId, {}),
+      ]);
+      return json({ ok: true });
+    }
+
+    if (action === "mark_due") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const transactionId = String(body.transactionId ?? "");
+      await db.batch([
+        db.prepare(
+          "UPDATE transactions SET status = 'due', paid_at = NULL WHERE id = ? AND status = 'paid'",
+        ).bind(transactionId),
+        auditStatement(user.id, "mark_due", "transaction", transactionId, {}),
       ]);
       return json({ ok: true });
     }
@@ -1043,10 +1343,56 @@ export async function POST(request: Request) {
     if (action === "deactivate_member") {
       if (user.role !== "admin") return fail("Administrator access required.", 403);
       const memberId = String(body.memberId ?? "");
+      const member = await db.prepare(
+        "SELECT id FROM users WHERE id = ? AND role = 'member' AND active = 1",
+      ).bind(memberId).first<{ id: string }>();
+      if (!member) return fail("Active member not found.", 404);
       await db.batch([
         db.prepare("UPDATE users SET active = 0 WHERE id = ? AND role = 'member'").bind(memberId),
         db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(memberId),
         auditStatement(user.id, "deactivate", "user", memberId, {}),
+      ]);
+      return json({ ok: true });
+    }
+
+    if (action === "reactivate_member") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const memberId = String(body.memberId ?? "");
+      const member = await db.prepare(
+        "SELECT id FROM users WHERE id = ? AND role = 'member' AND active = 0",
+      ).bind(memberId).first<{ id: string }>();
+      if (!member) return fail("Inactive member not found.", 404);
+      await db.batch([
+        db.prepare("UPDATE users SET active = 1 WHERE id = ? AND role = 'member'").bind(memberId),
+        auditStatement(user.id, "reactivate", "user", memberId, {}),
+      ]);
+      return json({ ok: true });
+    }
+
+    if (action === "delete_member") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const memberId = String(body.memberId ?? "");
+      const member = await db.prepare(
+        "SELECT id, name FROM users WHERE id = ? AND role = 'member'",
+      ).bind(memberId).first<{ id: string; name: string }>();
+      if (!member) return fail("Member not found.", 404);
+      const history = await db.prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM memberships WHERE user_id = ?) +
+           (SELECT COUNT(*) FROM bookings WHERE user_id = ?) +
+           (SELECT COUNT(*) FROM transactions WHERE user_id = ?) +
+           (SELECT COUNT(*) FROM member_addons WHERE user_id = ?) AS count`,
+      ).bind(memberId, memberId, memberId, memberId).first<{ count: number }>();
+      if (Number(history?.count ?? 0) > 0) {
+        return fail(
+          "This member has booking or financial history and cannot be permanently deleted. Deactivate access instead.",
+          409,
+        );
+      }
+      await db.batch([
+        db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(memberId),
+        db.prepare("DELETE FROM users WHERE id = ? AND role = 'member'").bind(memberId),
+        auditStatement(user.id, "delete", "user", memberId, { name: member.name }),
       ]);
       return json({ ok: true });
     }

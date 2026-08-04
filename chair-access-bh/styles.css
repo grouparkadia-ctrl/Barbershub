@@ -32,7 +32,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -42,7 +43,8 @@ button {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+textarea:focus-visible {
   outline: 2px solid white;
   outline-offset: 2px;
 }
@@ -133,7 +135,8 @@ label small {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   border: 1px solid #3a3a3e;
   background: #0f0f11;
@@ -144,7 +147,8 @@ select {
 }
 
 input:hover,
-select:hover {
+select:hover,
+textarea:hover {
   border-color: #66666d;
 }
 
@@ -483,7 +487,7 @@ select:hover {
   position: relative;
   border-left: 4px solid var(--red);
   background: #252529;
-  padding: 8px 23px 8px 9px;
+  padding: 8px 9px;
   margin-bottom: 5px;
   min-height: 49px;
 }
@@ -514,13 +518,19 @@ select:hover {
   text-transform: uppercase;
 }
 
-.booking-chip button {
-  position: absolute;
-  right: 4px;
-  top: 4px;
+.booking-actions {
+  display: flex;
+  gap: 5px;
+  margin-top: 7px;
+}
+
+.booking-chip .booking-actions button {
+  position: static;
   border: 0;
-  background: transparent;
-  color: #77777e;
+  background: #303034;
+  color: #d6d6db;
+  padding: 4px 6px;
+  font-size: 0.56rem;
   cursor: pointer;
 }
 
@@ -573,6 +583,49 @@ select:hover {
   display: block;
   color: var(--muted);
   margin-top: 3px;
+}
+
+.data-list article.member-record {
+  display: block;
+  padding: 0;
+}
+
+.member-record.inactive {
+  opacity: 0.62;
+}
+
+.member-summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 15px;
+}
+
+.member-actions {
+  grid-column: 2 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.member-plan-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin: 0 15px 10px 62px;
+  border: 1px solid #343439;
+  background: #1b1b1e;
+  padding: 9px 10px;
+}
+
+.member-plan-row > span {
+  min-width: 0;
+}
+
+.danger-link {
+  color: #ff7c80 !important;
 }
 
 .avatar {
@@ -698,6 +751,13 @@ select:hover {
   color: var(--muted);
   font-size: 0.78rem;
   line-height: 1.55;
+}
+
+.strong-note {
+  color: #eeeeF0;
+  border-left: 3px solid var(--red);
+  background: #1d1d20;
+  padding: 10px 12px;
 }
 
 .form-row {
@@ -847,6 +907,40 @@ legend {
     background: #242428;
     padding: 9px;
     font-size: 0.74rem;
+  }
+
+  .mobile-booking {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .mobile-booking-actions {
+    display: flex;
+    gap: 5px;
+  }
+
+  .mobile-booking-actions button {
+    border: 0;
+    background: #343439;
+    padding: 5px 7px;
+    font-size: 0.65rem;
+  }
+
+  .member-summary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .member-summary .plan-pill,
+  .member-actions {
+    grid-column: 1 / -1;
+  }
+
+  .member-plan-row {
+    align-items: flex-start;
+    flex-direction: column;
+    margin-left: 15px;
   }
 
   .mobile-free {
