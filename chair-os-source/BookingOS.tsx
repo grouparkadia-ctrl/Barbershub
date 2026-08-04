@@ -30,7 +30,9 @@ type Booking = {
   start_min: number;
   end_min: number;
   plan_key: PlanKey;
+  amount_cents: number;
   capacity: number;
+  notes: string;
 };
 
 type Membership = {
@@ -42,6 +44,8 @@ type Membership = {
   end_date: string;
   credits_total: number;
   credits_used: number;
+  price_cents: number;
+  preferred_chair: number | null;
   status: string;
 };
 
@@ -49,6 +53,8 @@ type Transaction = {
   id: string;
   user_id: string;
   user_name: string;
+  kind: string;
+  reference_id: string;
   description: string;
   amount_cents: number;
   status: string;
@@ -90,9 +96,11 @@ type State = {
 
 type ModalName =
   | "member"
+  | "edit-member"
   | "assign"
   | "addon"
   | "booking"
+  | "edit-booking"
   | "plan-day"
   | "settings"
   | null;
@@ -188,6 +196,8 @@ export default function BookingOS() {
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
   const [prefill, setPrefill] = useState<{ date?: string; chair?: number }>({});
+  const [selectedMember, setSelectedMember] = useState<User | null>(null);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -224,17 +234,18 @@ export default function BookingOS() {
   async function run(
     action: string,
     payload: Record<string, unknown>,
-    success: string,
+    success: string | ((result: Record<string, unknown>) => string),
   ) {
     setBusy(true);
     setError("");
     try {
       const result = await requestAction(action, payload);
       setModal(null);
+      const successMessage = typeof success === "function" ? success(result) : success;
       setToast(
         result.member
-          ? `${success} Access code: ${(result.member as { accessCode: string }).accessCode}`
-          : success,
+          ? `${successMessage} Access code: ${(result.member as { accessCode: string }).accessCode}`
+          : successMessage,
       );
       await load();
     } catch (runError) {
@@ -278,6 +289,10 @@ export default function BookingOS() {
   const myMemberships = memberships.filter(
     (membership) => membership.user_id === state.session?.id,
   );
+  const bookableMemberships = (isAdmin ? memberships : myMemberships).filter(
+    (membership) =>
+      membership.status === "active" && membership.credits_used < membership.credits_total,
+  );
 
   async function logout() {
     setBusy(true);
@@ -297,6 +312,16 @@ export default function BookingOS() {
   function openBooking(date?: string, chair?: number) {
     setPrefill({ date, chair });
     setModal("booking");
+  }
+
+  function openMemberEditor(member: User) {
+    setSelectedMember(member);
+    setModal("edit-member");
+  }
+
+  function openBookingEditor(booking: Booking) {
+    setSelectedBooking(booking);
+    setModal("edit-booking");
   }
 
   return (
@@ -367,7 +392,7 @@ export default function BookingOS() {
               </button>
             </>
           )}
-          {!isAdmin && myMemberships.some((item) => item.credits_used < item.credits_total) && (
+          {bookableMemberships.length > 0 && (
             <button className="secondary-button" onClick={() => setModal("plan-day")}>
               Book plan day
             </button>
@@ -397,6 +422,7 @@ export default function BookingOS() {
           isAdmin={isAdmin}
           currentUserId={state.session.id}
           onEmpty={openBooking}
+          onEdit={openBookingEditor}
           onCancel={(bookingId) =>
             void run("cancel_booking", { bookingId }, "Booking cancelled.")
           }
@@ -410,11 +436,38 @@ export default function BookingOS() {
             memberships={memberships}
             addons={addons}
             planMap={planMap}
+            onEdit={openMemberEditor}
+            onDeactivate={(memberId) =>
+              void run(
+                "deactivate_member",
+                { memberId },
+                "Member access deactivated. Plans, bookings and payments were kept.",
+              )
+            }
+            onReactivate={(memberId) =>
+              void run("reactivate_member", { memberId }, "Member access restored.")
+            }
+            onDelete={(memberId) =>
+              void run("delete_member", { memberId }, "Empty member record permanently deleted.")
+            }
+            onCancelPlan={(membershipId) =>
+              void run(
+                "cancel_membership",
+                { membershipId },
+                (result) =>
+                  result.chargeCancelled
+                    ? "Plan cancelled. Future bookings were released and the unpaid charge was removed."
+                    : `Plan cancelled and future bookings released. ${String(result.chargeRetainedReason ?? "The charge was retained.")}`,
+              )
+            }
           />
           <TransactionList
             transactions={transactions}
             onPaid={(transactionId) =>
               void run("mark_paid", { transactionId }, "Payment marked as paid.")
+            }
+            onDue={(transactionId) =>
+              void run("mark_due", { transactionId }, "Payment returned to amount due.")
             }
           />
         </section>
@@ -427,6 +480,16 @@ export default function BookingOS() {
           busy={busy}
           close={() => setModal(null)}
           submit={(payload) => void run("create_member", payload, "Member created.")}
+        />
+      )}
+      {modal === "edit-member" && selectedMember && (
+        <EditMemberModal
+          member={selectedMember}
+          busy={busy}
+          close={() => setModal(null)}
+          submit={(payload) =>
+            void run("update_member", payload, "Member details updated.")
+          }
         />
       )}
       {modal === "assign" && (
@@ -458,11 +521,20 @@ export default function BookingOS() {
           submit={(payload) => void run("create_booking", payload, "Booking created.")}
         />
       )}
+      {modal === "edit-booking" && selectedBooking && (
+        <EditBookingModal
+          booking={selectedBooking}
+          plan={planMap[selectedBooking.plan_key]}
+          busy={busy}
+          close={() => setModal(null)}
+          submit={(payload) =>
+            void run("update_booking", payload, "Booking corrected without creating a new charge.")
+          }
+        />
+      )}
       {modal === "plan-day" && (
         <PlanDayModal
-          memberships={myMemberships.filter(
-            (item) => item.credits_used < item.credits_total,
-          )}
+          memberships={bookableMemberships}
           planMap={planMap}
           busy={busy}
           close={() => setModal(null)}
@@ -596,7 +668,8 @@ function MemberStrip({
   addons: Addon[];
   plans: Record<PlanKey, Plan>;
 }) {
-  const active = memberships.find((membership) => membership.status === "active");
+  const activeMemberships = memberships.filter((membership) => membership.status === "active");
+  const active = activeMemberships[0];
   const priority = addons.find((addon) => addon.status === "active");
   const due = transactions
     .filter((transaction) => transaction.status === "due")
@@ -605,7 +678,13 @@ function MemberStrip({
     <section className="member-strip">
       <div>
         <span>Active plan</span>
-        <strong>{active ? plans[active.plan_key]?.name : "Pay as you go"}</strong>
+        <strong>
+          {activeMemberships.length > 1
+            ? `${activeMemberships.length} active plans · contact the owner`
+            : active
+              ? plans[active.plan_key]?.name
+              : "Pay as you go"}
+        </strong>
       </div>
       <div>
         <span>Remaining plan days</span>
@@ -630,6 +709,7 @@ function Calendar({
   isAdmin,
   currentUserId,
   onEmpty,
+  onEdit,
   onCancel,
 }: {
   days: string[];
@@ -638,6 +718,7 @@ function Calendar({
   isAdmin: boolean;
   currentUserId: string;
   onEmpty: (date: string, chair: number) => void;
+  onEdit: (booking: Booking) => void;
   onCancel: (bookingId: string) => void;
 }) {
   return (
@@ -687,17 +768,28 @@ function Calendar({
                           <strong>{booking.user_name}</strong>
                           <span>{minutesLabel(booking.start_min)}–{minutesLabel(booking.end_min)}</span>
                           <small>{visiblePlan?.shortName ?? (isAdmin ? booking.plan_key : "Reserved")}</small>
-                          {canCancel && (
-                            <button
-                              onClick={() =>
-                                window.confirm("Cancel this booking and release the chair?") &&
-                                onCancel(booking.id)
-                              }
-                              aria-label="Cancel booking"
-                            >
-                              ×
-                            </button>
-                          )}
+                          <div className="booking-actions">
+                            {isAdmin && (
+                              <button onClick={() => onEdit(booking)} aria-label="Edit booking">
+                                Edit
+                              </button>
+                            )}
+                            {canCancel && (
+                              <button
+                                className="danger-link"
+                                onClick={() =>
+                                  window.confirm(
+                                    booking.membership_id
+                                      ? "Cancel this plan day? The day will return to the existing plan. This does not cancel the plan charge."
+                                      : "Cancel this booking and its unpaid booking charge?",
+                                  ) && onCancel(booking.id)
+                                }
+                                aria-label="Cancel booking"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </div>
                         </article>
                       );
                     })
@@ -721,7 +813,7 @@ function Calendar({
                   <div className="mobile-chair" key={chair}>
                     <b>Chair {chair}</b>
                     {items.length ? items.map((booking) => (
-                      <button
+                      <article
                         key={booking.id}
                         className="mobile-booking"
                         style={{
@@ -730,14 +822,26 @@ function Calendar({
                               ? planMap[booking.plan_key]?.color
                               : "#64748b",
                         }}
-                        onClick={() =>
-                          (isAdmin || booking.user_id === currentUserId) &&
-                          window.confirm("Cancel this booking and release the chair?") &&
-                          onCancel(booking.id)
-                        }
                       >
-                        {booking.user_name} · {minutesLabel(booking.start_min)}–{minutesLabel(booking.end_min)}
-                      </button>
+                        <span>{booking.user_name} · {minutesLabel(booking.start_min)}–{minutesLabel(booking.end_min)}</span>
+                        <div className="mobile-booking-actions">
+                          {isAdmin && <button onClick={() => onEdit(booking)}>Edit</button>}
+                          {(isAdmin || booking.user_id === currentUserId) && (
+                            <button
+                              className="danger-link"
+                              onClick={() =>
+                                window.confirm(
+                                  booking.membership_id
+                                    ? "Cancel this plan day? The day will return to the existing plan. This does not cancel the plan charge."
+                                    : "Cancel this booking and its unpaid booking charge?",
+                                ) && onCancel(booking.id)
+                              }
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      </article>
                     )) : (
                       <button className="mobile-free" onClick={() => isAdmin && onEmpty(day, chair)}>
                         Free
@@ -759,31 +863,97 @@ function MemberList({
   memberships,
   addons,
   planMap,
+  onEdit,
+  onDeactivate,
+  onReactivate,
+  onDelete,
+  onCancelPlan,
 }: {
   users: User[];
   memberships: Membership[];
   addons: Addon[];
   planMap: Record<PlanKey, Plan>;
+  onEdit: (member: User) => void;
+  onDeactivate: (id: string) => void;
+  onReactivate: (id: string) => void;
+  onDelete: (id: string) => void;
+  onCancelPlan: (id: string) => void;
 }) {
   return (
     <section className="table-card">
       <header><div><span>MEMBERS</span><h2>Access & plans</h2></div><b>{users.filter((u) => u.active).length}</b></header>
       <div className="data-list">
         {users.filter((user) => user.role === "member").map((user) => {
-          const membership = memberships.find(
+          const activeMemberships = memberships.filter(
             (item) => item.user_id === user.id && item.status === "active",
           );
           const priority = addons.some(
             (item) => item.user_id === user.id && item.status === "active",
           );
           return (
-            <article key={user.id}>
-              <div className="avatar">{user.name.slice(0, 2).toUpperCase()}</div>
-              <div><strong>{user.name}</strong><small>Code {user.access_code}</small></div>
-              <span className="plan-pill">
-                {membership ? planMap[membership.plan_key]?.shortName : "PAYG"}
-                {priority ? " · PRIORITY" : ""}
-              </span>
+            <article className={user.active ? "member-record" : "member-record inactive"} key={user.id}>
+              <div className="member-summary">
+                <div className="avatar">{user.name.slice(0, 2).toUpperCase()}</div>
+                <div>
+                  <strong>{user.name}</strong>
+                  <small>Code {user.access_code} · {user.active ? "Active access" : "Access deactivated"}</small>
+                </div>
+                <span className="plan-pill">
+                  {activeMemberships.length
+                    ? `${activeMemberships.map((item) => planMap[item.plan_key]?.shortName).join(" + ")}${activeMemberships.length > 1 ? " · CHECK DUPLICATE" : ""}`
+                    : "PAYG"}
+                  {priority ? " · PRIORITY" : ""}
+                </span>
+                <div className="member-actions">
+                  <button className="mini-button" onClick={() => onEdit(user)}>Edit</button>
+                  {user.active ? (
+                    <button
+                      className="mini-button"
+                      onClick={() =>
+                        window.confirm(
+                          "Deactivate this member's login? Existing plans, bookings and payments will be kept.",
+                        ) && onDeactivate(user.id)
+                      }
+                    >
+                      Deactivate
+                    </button>
+                  ) : (
+                    <button className="mini-button" onClick={() => onReactivate(user.id)}>
+                      Reactivate
+                    </button>
+                  )}
+                  <button
+                    className="mini-button danger-link"
+                    onClick={() =>
+                      window.confirm(
+                        "Permanently delete this member? This works only when the member has no booking, plan or payment history.",
+                      ) && onDelete(user.id)
+                    }
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+              {activeMemberships.map((membership) => (
+                <div className="member-plan-row" key={membership.id}>
+                  <span>
+                    <strong>{planMap[membership.plan_key]?.name}</strong>
+                    <small>
+                      {membership.start_date}–{membership.end_date} · {membership.credits_total - membership.credits_used} days remaining
+                    </small>
+                  </span>
+                  <button
+                    className="mini-button danger-link"
+                    onClick={() =>
+                      window.confirm(
+                        "Cancel this plan? Future plan bookings will be released. The unpaid charge is removed only when no past plan days were used.",
+                      ) && onCancelPlan(membership.id)
+                    }
+                  >
+                    Cancel plan
+                  </button>
+                </div>
+              ))}
             </article>
           );
         })}
@@ -796,9 +966,11 @@ function MemberList({
 function TransactionList({
   transactions,
   onPaid,
+  onDue,
 }: {
   transactions: Transaction[];
   onPaid: (id: string) => void;
+  onDue: (id: string) => void;
 }) {
   return (
     <section className="table-card">
@@ -811,7 +983,16 @@ function TransactionList({
             <strong>{money(transaction.amount_cents)}</strong>
             {transaction.status === "due" ? (
               <button className="mini-button" onClick={() => onPaid(transaction.id)}>Mark paid</button>
-            ) : <span className="paid-label">Paid</span>}
+            ) : (
+              <button
+                className="mini-button"
+                onClick={() =>
+                  window.confirm("Return this payment to amount due?") && onDue(transaction.id)
+                }
+              >
+                Paid · Undo
+              </button>
+            )}
           </article>
         ))}
         {transactions.length === 0 && <p className="empty-copy">Transactions appear as plans and bookings are added.</p>}
@@ -871,6 +1052,41 @@ function MemberModal({
         <label>Access code <small>Leave blank to generate</small><input name="accessCode" /></label>
         <label>Temporary PIN<input name="pin" required inputMode="numeric" pattern="\d{6,8}" minLength={6} maxLength={8} autoComplete="new-password" /></label>
         <button className="primary-button wide" disabled={busy}>Create member</button>
+      </form>
+    </Modal>
+  );
+}
+
+function EditMemberModal({
+  member,
+  busy,
+  close,
+  submit,
+}: {
+  member: User;
+  busy: boolean;
+  close: () => void;
+  submit: (payload: Record<string, unknown>) => void;
+}) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    submit({ memberId: member.id, ...Object.fromEntries(new FormData(event.currentTarget)) });
+  }
+  return (
+    <Modal
+      title="Edit member"
+      intro="Correct the name or access code. Set a new PIN only when it needs to be reset."
+      close={close}
+    >
+      <form className="modal-form" onSubmit={onSubmit}>
+        <label>Member name<input name="name" defaultValue={member.name} required /></label>
+        <label>Access code<input name="accessCode" defaultValue={member.access_code} required /></label>
+        <label>
+          New PIN <small>Leave blank to keep the current PIN</small>
+          <input name="newPin" inputMode="numeric" pattern="\d{6,8}" minLength={6} maxLength={8} autoComplete="new-password" />
+        </label>
+        <p className="form-note">Resetting the PIN signs this member out on other devices.</p>
+        <button className="primary-button wide" disabled={busy}>Save member details</button>
       </form>
     </Modal>
   );
@@ -1008,6 +1224,63 @@ function BookingModal({
   );
 }
 
+function EditBookingModal({
+  booking,
+  plan,
+  busy,
+  close,
+  submit,
+}: {
+  booking: Booking;
+  plan: Plan;
+  busy: boolean;
+  close: () => void;
+  submit: (payload: Record<string, unknown>) => void;
+}) {
+  const editableTime = booking.membership_id !== null || booking.plan_key === "hourly";
+  const startOptions = Array.from({ length: 24 }, (_, index) => 540 + index * 30).filter(
+    (minute) => minute < 1260,
+  );
+  const endOptions = Array.from({ length: 24 }, (_, index) => 570 + index * 30).filter(
+    (minute) => minute <= 1260,
+  );
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    submit({ bookingId: booking.id, ...Object.fromEntries(new FormData(event.currentTarget)) });
+  }
+  return (
+    <Modal
+      title="Edit booking"
+      intro="Move this existing booking without creating a second plan or charge. Conflicts are checked before saving."
+      close={close}
+    >
+      <form className="modal-form" onSubmit={onSubmit}>
+        <div className="form-note strong-note">
+          {booking.user_name} · {plan?.name ?? booking.plan_key}
+          {booking.membership_id ? " · included plan day" : ` · ${money(booking.amount_cents)}`}
+        </div>
+        <div className="form-row">
+          <label>Date<input name="date" type="date" min={localDate()} defaultValue={booking.date} required /></label>
+          <label>Chair<select name="chairId" defaultValue={String(booking.chair_id)}>{[1,2,3,4,5].map((chair) => <option value={chair} key={chair}>Chair {chair}</option>)}</select></label>
+        </div>
+        {editableTime ? (
+          <div className="form-row">
+            <label>Start<select name="startMin" defaultValue={String(booking.start_min)}>{startOptions.map((minute)=><option value={minute} key={minute}>{minutesLabel(minute)}</option>)}</select></label>
+            <label>End<select name="endMin" defaultValue={String(booking.end_min)}>{endOptions.map((minute)=><option value={minute} key={minute}>{minutesLabel(minute)}</option>)}</select></label>
+          </div>
+        ) : (
+          <p className="form-note">Time stays {minutesLabel(booking.start_min)}–{minutesLabel(booking.end_min)} for this booking type.</p>
+        )}
+        <label>Internal note<textarea name="notes" defaultValue={booking.notes ?? ""} maxLength={500} rows={3} /></label>
+        {booking.membership_id && (
+          <p className="form-note">Editing keeps this as the same included plan day. It does not add another amount due.</p>
+        )}
+        <button className="primary-button wide" disabled={busy}>Save booking correction</button>
+      </form>
+    </Modal>
+  );
+}
+
 function PlanDayModal({
   memberships,
   planMap,
@@ -1032,7 +1305,7 @@ function PlanDayModal({
       close={close}
     >
       <form className="modal-form" onSubmit={onSubmit}>
-        <label>Plan<select name="membershipId">{memberships.map((membership) => <option key={membership.id} value={membership.id}>{planMap[membership.plan_key]?.name} · {membership.credits_total-membership.credits_used} remaining</option>)}</select></label>
+        <label>Member plan<select name="membershipId">{memberships.map((membership) => <option key={membership.id} value={membership.id}>{membership.user_name} · {planMap[membership.plan_key]?.name} · {membership.credits_total-membership.credits_used} remaining</option>)}</select></label>
         <div className="form-row">
           <label>Date<input name="date" type="date" defaultValue={localDate()} required /></label>
           <label>Chair<select name="chairId" defaultValue="0"><option value="0">Auto assign</option>{[1,2,3,4,5].map((chair) => <option value={chair} key={chair}>Chair {chair}</option>)}</select></label>

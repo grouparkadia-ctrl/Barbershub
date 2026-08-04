@@ -102,3 +102,50 @@ test("build output points only to the scoped member API", async () => {
   assert.match(bundle, /Member service is temporarily unavailable/);
   assert.doesNotMatch(bundle, /\/api\/os/);
 });
+
+test("supports safe member, booking, plan, and payment corrections", async () => {
+  const api = await source("functions/chair-access-bh/api.ts");
+  const client = await source("chair-os-source/BookingOS.tsx");
+  const bundle = await source("chair-access-bh/app.js");
+
+  for (const action of [
+    "update_member",
+    "deactivate_member",
+    "reactivate_member",
+    "delete_member",
+    "update_booking",
+    "cancel_membership",
+    "mark_due",
+  ]) {
+    assert.match(api, new RegExp(`action === ["']${action}["']`));
+  }
+
+  assert.match(api, /already has an active/);
+  assert.match(api, /occupiedSlotsExcluding/);
+  assert.match(api, /DELETE FROM booking_slots WHERE booking_id = \?/);
+  assert.match(api, /UPDATE transactions SET description = \?, amount_cents = \?, due_date = \?/);
+  assert.match(api, /UPDATE transactions SET status = 'cancelled'.*status = 'due'/s);
+  assert.match(api, /This plan already has a booking on that date/);
+  assert.match(api, /cannot be permanently deleted\. Deactivate access instead/);
+
+  for (const message of [
+    "Edit member",
+    "Edit booking",
+    "Cancel plan",
+    "Paid · Undo",
+    "does not cancel the plan charge",
+    "without creating a new charge",
+  ]) {
+    assert.match(client, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  for (const message of [
+    "Edit member",
+    "Edit booking",
+    "Cancel plan",
+    "does not cancel the plan charge",
+    "without creating a new charge",
+  ]) {
+    assert.match(bundle, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.match(bundle, /Paid \\xB7 Undo/);
+});
