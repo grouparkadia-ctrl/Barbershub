@@ -15,8 +15,8 @@ test("keeps the member portal unlisted and excluded from search indexing", async
   const barberPage = await source("for-barbers.html");
 
   assert.match(html, /noindex, nofollow, noarchive, nosnippet/);
-  assert.match(html, /styles\.css\?v=20260804-corrections/);
-  assert.match(html, /app\.js\?v=20260804-corrections/);
+  assert.match(html, /styles\.css\?v=20260805-accounting/);
+  assert.match(html, /app\.js\?v=20260805-accounting/);
   assert.match(headers, /X-Robots-Tag: noindex, nofollow, noarchive, nosnippet/);
   assert.match(headers, /\/chair-access-bh\/app\.js[\s\S]*Cache-Control: no-cache, must-revalidate/);
   assert.match(headers, /\/chair-access-bh\/styles\.css[\s\S]*Cache-Control: no-cache, must-revalidate/);
@@ -116,10 +116,14 @@ test("supports safe member, booking, plan, and payment corrections", async () =>
     "update_member",
     "deactivate_member",
     "reactivate_member",
+    "archive_member",
+    "restore_member",
     "delete_member",
     "update_booking",
     "cancel_membership",
     "mark_due",
+    "add_adjustment",
+    "cancel_adjustment",
   ]) {
     assert.match(api, new RegExp(`action === ["']${action}["']`));
   }
@@ -131,7 +135,10 @@ test("supports safe member, booking, plan, and payment corrections", async () =>
   assert.match(api, /UPDATE transactions SET status = 'cancelled'.*status = 'due'/s);
   assert.match(api, /This plan already has a booking on that date/);
   assert.match(api, /accessCode\.length < 4 && accessCode !== member\.access_code/);
-  assert.match(api, /cannot be permanently deleted\. Deactivate access instead/);
+  assert.match(api, /cannot be permanently deleted\. Archive the member instead/);
+  assert.match(api, /pending referral commission/);
+  assert.match(api, /source_transaction_id = \? AND status = 'pending'/);
+  assert.match(api, /A referral commission already exists/);
 
   for (const message of [
     "Edit member",
@@ -140,6 +147,10 @@ test("supports safe member, booking, plan, and payment corrections", async () =>
     "Paid · Undo",
     "does not cancel the plan charge",
     "without creating a new charge",
+    "Accountant XLSX",
+    "Archive",
+    "Discount or commission",
+    "Export booking history",
   ]) {
     assert.match(client, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
@@ -149,8 +160,47 @@ test("supports safe member, booking, plan, and payment corrections", async () =>
     "Cancel plan",
     "does not cancel the plan charge",
     "without creating a new charge",
+    "Accountant XLSX",
+    "Discount or commission",
+    "Export booking history",
   ]) {
     assert.match(bundle, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.match(bundle, /Paid \\xB7 Undo/);
+});
+
+test("stores complete accounting profiles and adjustable business settings", async () => {
+  const database = await source("functions/_shared/os-db.ts");
+  const migration = await source("migrations/0002_member_accounting.sql");
+  const api = await source("functions/chair-access-bh/api.ts");
+  const client = await source("chair-os-source/BookingOS.tsx");
+
+  for (const content of [database, migration]) {
+    assert.match(content, /CREATE TABLE IF NOT EXISTS member_profiles/);
+    assert.match(content, /CREATE TABLE IF NOT EXISTS financial_adjustments/);
+    assert.match(content, /default_referral_rate_bps', '2000'/);
+    assert.match(content, /supplier_registration_number', '40203547922'/);
+    assert.match(content, /supplier_iban', 'LV76HABA0551057160264'/);
+  }
+  assert.match(api, /registration_number/);
+  assert.match(api, /agreement_number/);
+  assert.match(api, /billing_notes/);
+  assert.match(api, /invoiceLatePenaltyPercent/);
+  assert.match(client, /Registration number or personal code/);
+  assert.match(client, /Settings & invoice details/);
+  assert.match(client, /Default referral commission/);
+});
+
+test("creates native Excel exports without exposing member credentials", async () => {
+  const api = await source("functions/chair-access-bh/api.ts");
+  const xlsx = await source("functions/_shared/xlsx.mjs");
+
+  assert.match(api, /exportType === "all-history"/);
+  assert.match(api, /exportType === "member-accounting"/);
+  for (const sheet of ["Summary", "Bookings", "Transactions", "Adjustments", "Members", "Invoice Data"]) {
+    assert.match(api, new RegExp(sheet));
+  }
+  assert.match(xlsx, /application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+  assert.match(xlsx, /xl\/worksheets\/sheet/);
+  assert.doesNotMatch(api.slice(api.indexOf("async function exportWorkbook"), api.indexOf("async function appState")), /access_code|pin_hash/);
 });

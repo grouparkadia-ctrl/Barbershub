@@ -18,6 +18,17 @@ type User = {
   access_code: string;
   role: string;
   active: number;
+  archived: number;
+  history_count: number;
+  billing_type: "company" | "self_employed" | "individual" | "other";
+  legal_name: string;
+  registration_number: string;
+  legal_address: string;
+  email: string;
+  phone: string;
+  agreement_number: string;
+  service_description: string;
+  billing_notes: string;
 };
 
 type Booking = {
@@ -57,8 +68,47 @@ type Transaction = {
   reference_id: string;
   description: string;
   amount_cents: number;
+  base_amount_cents: number;
+  adjustment_cents: number;
+  net_amount_cents: number;
+  pending_adjustment_cents: number;
   status: string;
   due_date: string;
+};
+
+type Adjustment = {
+  id: string;
+  user_id: string;
+  user_name: string;
+  transaction_id: string;
+  transaction_description: string;
+  source_user_id: string | null;
+  source_user_name: string | null;
+  adjustment_type: string;
+  calculation_type: string;
+  rate_bps: number | null;
+  basis_cents: number;
+  amount_cents: number;
+  description: string;
+  effective_date: string;
+  status: "active" | "pending";
+};
+
+type Settings = {
+  monthlyCost: number;
+  capacityTarget: number;
+  invoiceDueDays: number;
+  defaultReferralRate: number;
+  supplierName: string;
+  supplierRegistrationNumber: string;
+  supplierLegalAddress: string;
+  supplierServiceAddress: string;
+  supplierBankName: string;
+  supplierSwift: string;
+  supplierIban: string;
+  invoicePrefix: string;
+  invoiceDefaultDescription: string;
+  invoiceLatePenaltyPercent: number;
 };
 
 type Addon = {
@@ -80,8 +130,9 @@ type State = {
   memberships?: Membership[];
   bookings?: Booking[];
   transactions?: Transaction[];
+  adjustments?: Adjustment[];
   addons?: Addon[];
-  settings?: { monthlyCost: number; capacityTarget: number };
+  settings?: Settings;
   finance?: {
     contracted: number;
     collected: number;
@@ -103,6 +154,8 @@ type ModalName =
   | "edit-booking"
   | "plan-day"
   | "settings"
+  | "adjustment"
+  | "export"
   | null;
 
 const weekdayOptions = [
@@ -173,6 +226,29 @@ async function fetchState(month: string): Promise<State> {
   const data = (await readApiResponse(response)) as State & { error?: string };
   if (!response.ok) throw new Error(data.error ?? "Unable to load.");
   return data;
+}
+
+async function downloadWorkbook(parameters: URLSearchParams, fallbackName: string): Promise<void> {
+  const response = await fetch(`${API_URL}?${parameters.toString()}`, { cache: "no-store" });
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+    const message = contentType.includes("application/json")
+      ? String(((await response.json()) as { error?: string }).error ?? "Export failed.")
+      : "Export failed.";
+    throw new Error(message);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  const name = match?.[1] ?? fallbackName;
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = name;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(href);
 }
 
 async function readApiResponse(response: Response): Promise<Record<string, unknown>> {
@@ -277,6 +353,7 @@ export default function BookingOS() {
   const memberships = state.memberships ?? [];
   const bookings = state.bookings ?? [];
   const transactions = state.transactions ?? [];
+  const adjustments = state.adjustments ?? [];
   const addons = state.addons ?? [];
   const isAdmin = state.session.role === "admin";
   const planMap = Object.fromEntries(plans.map((plan) => [plan.key, plan])) as Record<
@@ -324,6 +401,19 @@ export default function BookingOS() {
     setModal("edit-booking");
   }
 
+  async function exportData(parameters: URLSearchParams, fallbackName: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await downloadWorkbook(parameters, fallbackName);
+      setToast("Excel file downloaded.");
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "Export failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <main className="os-shell">
       <header className="topbar">
@@ -357,6 +447,21 @@ export default function BookingOS() {
           finance={state.finance}
           onSettings={() => setModal("settings")}
         />
+      )}
+
+      {isAdmin && (
+        <section className="admin-tools">
+          <div>
+            <span>ADMIN CONTROLS</span>
+            <strong>Members, accounting and exports</strong>
+            <small>Private controls. Members cannot see or use these actions.</small>
+          </div>
+          <div className="admin-tool-actions">
+            <button className="secondary-button" onClick={() => setModal("settings")}>Settings & invoice details</button>
+            <button className="secondary-button" onClick={() => setModal("export")}>Export booking history</button>
+            <button className="primary-button" onClick={() => setModal("adjustment")}>+ Discount or commission</button>
+          </div>
+        </section>
       )}
 
       {!isAdmin && (
@@ -447,8 +552,20 @@ export default function BookingOS() {
             onReactivate={(memberId) =>
               void run("reactivate_member", { memberId }, "Member access restored.")
             }
+            onArchive={(memberId) =>
+              void run("archive_member", { memberId }, "Member archived. All history was preserved.")
+            }
+            onRestore={(memberId) =>
+              void run("restore_member", { memberId }, "Member restored with active access.")
+            }
             onDelete={(memberId) =>
               void run("delete_member", { memberId }, "Empty member record permanently deleted.")
+            }
+            onExport={(memberId, memberName) =>
+              void exportData(
+                new URLSearchParams({ export: "member-accounting", memberId, month }),
+                `barbers-hub-${memberName}-${month}.xlsx`,
+              )
             }
             onCancelPlan={(membershipId) =>
               void run(
@@ -470,6 +587,12 @@ export default function BookingOS() {
               void run("mark_due", { transactionId }, "Payment returned to amount due.")
             }
           />
+          <AdjustmentList
+            adjustments={adjustments}
+            onCancel={(adjustmentId) =>
+              void run("cancel_adjustment", { adjustmentId }, "Adjustment cancelled.")
+            }
+          />
         </section>
       )}
 
@@ -485,6 +608,7 @@ export default function BookingOS() {
       {modal === "edit-member" && selectedMember && (
         <EditMemberModal
           member={selectedMember}
+          error={error}
           busy={busy}
           close={() => setModal(null)}
           submit={(payload) =>
@@ -551,6 +675,32 @@ export default function BookingOS() {
           submit={(payload) =>
             void run("update_settings", payload, "Financial settings updated.")
           }
+        />
+      )}
+      {modal === "adjustment" && state.settings && (
+        <AdjustmentModal
+          users={users.filter((item) => item.role === "member" && !item.archived)}
+          transactions={transactions.filter((item) => item.status === "due")}
+          month={month}
+          defaultReferralRate={state.settings.defaultReferralRate}
+          busy={busy}
+          error={error}
+          close={() => setModal(null)}
+          submit={(payload) =>
+            void run("add_adjustment", payload, (result) =>
+              (result.adjustment as { status?: string } | undefined)?.status === "pending"
+                ? "Referral commission saved as pending until the new member's first payment is received."
+                : "Adjustment applied.",
+            )
+          }
+        />
+      )}
+      {modal === "export" && (
+        <ExportModal
+          month={month}
+          busy={busy}
+          close={() => setModal(null)}
+          submit={(parameters) => void exportData(parameters, "barbers-hub-history.xlsx")}
         />
       )}
     </main>
@@ -866,7 +1016,10 @@ function MemberList({
   onEdit,
   onDeactivate,
   onReactivate,
+  onArchive,
+  onRestore,
   onDelete,
+  onExport,
   onCancelPlan,
 }: {
   users: User[];
@@ -876,14 +1029,29 @@ function MemberList({
   onEdit: (member: User) => void;
   onDeactivate: (id: string) => void;
   onReactivate: (id: string) => void;
+  onArchive: (id: string) => void;
+  onRestore: (id: string) => void;
   onDelete: (id: string) => void;
+  onExport: (id: string, name: string) => void;
   onCancelPlan: (id: string) => void;
 }) {
+  const [showArchived, setShowArchived] = useState(false);
+  const members = users.filter(
+    (user) => user.role === "member" && (showArchived ? Boolean(user.archived) : !user.archived),
+  );
   return (
     <section className="table-card">
-      <header><div><span>MEMBERS</span><h2>Access & plans</h2></div><b>{users.filter((u) => u.active).length}</b></header>
+      <header>
+        <div><span>MEMBERS</span><h2>Access, invoices & plans</h2></div>
+        <div className="header-actions">
+          <button className="mini-button" onClick={() => setShowArchived((value) => !value)}>
+            {showArchived ? "Show current" : `Archived (${users.filter((item) => item.archived).length})`}
+          </button>
+          <b>{members.length}</b>
+        </div>
+      </header>
       <div className="data-list">
-        {users.filter((user) => user.role === "member").map((user) => {
+        {members.map((user) => {
           const activeMemberships = memberships.filter(
             (item) => item.user_id === user.id && item.status === "active",
           );
@@ -891,12 +1059,15 @@ function MemberList({
             (item) => item.user_id === user.id && item.status === "active",
           );
           return (
-            <article className={user.active ? "member-record" : "member-record inactive"} key={user.id}>
+            <article className={user.active && !user.archived ? "member-record" : "member-record inactive"} key={user.id}>
               <div className="member-summary">
                 <div className="avatar">{user.name.slice(0, 2).toUpperCase()}</div>
                 <div>
                   <strong>{user.name}</strong>
-                  <small>Code {user.access_code} · {user.active ? "Active access" : "Access deactivated"}</small>
+                  <small>
+                    {user.archived ? "Archived · history kept" : `Code ${user.access_code} · ${user.active ? "Active access" : "Access deactivated"}`}
+                  </small>
+                  <small>{user.legal_name || "Invoice details not completed"}{user.agreement_number ? ` · Agreement ${user.agreement_number}` : ""}</small>
                 </div>
                 <span className="plan-pill">
                   {activeMemberships.length
@@ -906,7 +1077,10 @@ function MemberList({
                 </span>
                 <div className="member-actions">
                   <button className="mini-button" onClick={() => onEdit(user)}>Edit</button>
-                  {user.active ? (
+                  <button className="mini-button" onClick={() => onExport(user.id, user.name)}>Accountant XLSX</button>
+                  {user.archived ? (
+                    <button className="mini-button" onClick={() => onRestore(user.id)}>Restore</button>
+                  ) : user.active ? (
                     <button
                       className="mini-button"
                       onClick={() =>
@@ -922,16 +1096,30 @@ function MemberList({
                       Reactivate
                     </button>
                   )}
-                  <button
-                    className="mini-button danger-link"
-                    onClick={() =>
-                      window.confirm(
-                        "Permanently delete this member? This works only when the member has no booking, plan or payment history.",
-                      ) && onDelete(user.id)
-                    }
-                  >
-                    Delete
-                  </button>
+                  {!user.archived && user.history_count > 0 && (
+                    <button
+                      className="mini-button danger-link"
+                      onClick={() =>
+                        window.confirm(
+                          "Archive this member? Login will stop and the member will leave the current list. Booking and accounting history will remain available.",
+                        ) && onArchive(user.id)
+                      }
+                    >
+                      Archive
+                    </button>
+                  )}
+                  {!user.archived && user.history_count === 0 && (
+                    <button
+                      className="mini-button danger-link"
+                      onClick={() =>
+                        window.confirm(
+                          "Permanently delete this empty member record? This cannot be undone.",
+                        ) && onDelete(user.id)
+                      }
+                    >
+                      Delete empty record
+                    </button>
+                  )}
                 </div>
               </div>
               {activeMemberships.map((membership) => (
@@ -957,7 +1145,7 @@ function MemberList({
             </article>
           );
         })}
-        {!users.some((user) => user.role === "member") && <p className="empty-copy">Add the first member to begin.</p>}
+        {members.length === 0 && <p className="empty-copy">{showArchived ? "No archived members." : "Add the first member to begin."}</p>}
       </div>
     </section>
   );
@@ -979,8 +1167,17 @@ function TransactionList({
         {transactions.slice(0, 10).map((transaction) => (
           <article key={transaction.id}>
             <div className={transaction.status === "paid" ? "status-dot paid" : "status-dot"} />
-            <div><strong>{transaction.user_name}</strong><small>{transaction.description}</small></div>
-            <strong>{money(transaction.amount_cents)}</strong>
+            <div>
+              <strong>{transaction.user_name}</strong>
+              <small>{transaction.description}</small>
+              {transaction.adjustment_cents !== 0 && (
+                <small>{money(transaction.base_amount_cents)} base · {money(transaction.adjustment_cents)} adjustment</small>
+              )}
+              {transaction.pending_adjustment_cents !== 0 && (
+                <small className="pending-copy">{money(transaction.pending_adjustment_cents)} commission pending</small>
+              )}
+            </div>
+            <strong>{money(transaction.net_amount_cents)}</strong>
             {transaction.status === "due" ? (
               <button className="mini-button" onClick={() => onPaid(transaction.id)}>Mark paid</button>
             ) : (
@@ -996,6 +1193,40 @@ function TransactionList({
           </article>
         ))}
         {transactions.length === 0 && <p className="empty-copy">Transactions appear as plans and bookings are added.</p>}
+      </div>
+    </section>
+  );
+}
+
+function AdjustmentList({
+  adjustments,
+  onCancel,
+}: {
+  adjustments: Adjustment[];
+  onCancel: (id: string) => void;
+}) {
+  return (
+    <section className="table-card adjustments-card">
+      <header><div><span>ADJUSTMENTS</span><h2>Discounts & commissions</h2></div><b>{adjustments.length}</b></header>
+      <div className="data-list">
+        {adjustments.map((adjustment) => (
+          <article key={adjustment.id}>
+            <div className={adjustment.status === "active" ? "status-dot paid" : "status-dot"} />
+            <div>
+              <strong>{adjustment.user_name} · {adjustment.description}</strong>
+              <small>{adjustment.transaction_description}</small>
+              {adjustment.source_user_name && <small>Referred member: {adjustment.source_user_name}</small>}
+            </div>
+            <strong>{money(adjustment.amount_cents)}</strong>
+            <button
+              className="mini-button danger-link"
+              onClick={() => window.confirm("Cancel this adjustment?") && onCancel(adjustment.id)}
+            >
+              {adjustment.status === "pending" ? "Pending · cancel" : "Remove"}
+            </button>
+          </article>
+        ))}
+        {adjustments.length === 0 && <p className="empty-copy">Discounts and referral commissions will appear here.</p>}
       </div>
     </section>
   );
@@ -1051,6 +1282,7 @@ function MemberModal({
         <label>Member name<input name="name" required /></label>
         <label>Access code <small>Leave blank to generate</small><input name="accessCode" /></label>
         <label>Temporary PIN<input name="pin" required inputMode="numeric" pattern="\d{6,8}" minLength={6} maxLength={8} autoComplete="new-password" /></label>
+        <BillingFields />
         <button className="primary-button wide" disabled={busy}>Create member</button>
       </form>
     </Modal>
@@ -1059,11 +1291,13 @@ function MemberModal({
 
 function EditMemberModal({
   member,
+  error,
   busy,
   close,
   submit,
 }: {
   member: User;
+  error: string;
   busy: boolean;
   close: () => void;
   submit: (payload: Record<string, unknown>) => void;
@@ -1079,6 +1313,7 @@ function EditMemberModal({
       close={close}
     >
       <form className="modal-form" onSubmit={onSubmit}>
+        {error && <div className="error-banner modal-error">{error}</div>}
         <label>Member name<input name="name" defaultValue={member.name} required /></label>
         <label>Access code<input name="accessCode" defaultValue={member.access_code} required /></label>
         <label>
@@ -1086,9 +1321,37 @@ function EditMemberModal({
           <input name="newPin" inputMode="numeric" pattern="\d{6,8}" minLength={6} maxLength={8} autoComplete="new-password" />
         </label>
         <p className="form-note">Resetting the PIN signs this member out on other devices.</p>
+        <BillingFields member={member} />
         <button className="primary-button wide" disabled={busy}>Save member details</button>
       </form>
     </Modal>
+  );
+}
+
+function BillingFields({ member }: { member?: User }) {
+  return (
+    <fieldset className="form-section">
+      <legend>Invoice and contact details</legend>
+      <label>
+        Billing type
+        <select name="billingType" defaultValue={member?.billing_type ?? "self_employed"}>
+          <option value="self_employed">Self-employed person</option>
+          <option value="company">Company</option>
+          <option value="individual">Individual</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+      <label>Legal name / invoice payer<input name="legalName" defaultValue={member?.legal_name ?? ""} /></label>
+      <label>Registration number or personal code<input name="registrationNumber" defaultValue={member?.registration_number ?? ""} /></label>
+      <label>Legal / declared address<textarea name="legalAddress" rows={2} defaultValue={member?.legal_address ?? ""} /></label>
+      <div className="form-row">
+        <label>Email<input name="email" type="email" defaultValue={member?.email ?? ""} /></label>
+        <label>Phone<input name="phone" defaultValue={member?.phone ?? ""} /></label>
+      </div>
+      <label>Agreement number<input name="agreementNumber" defaultValue={member?.agreement_number ?? ""} /></label>
+      <label>Service description <small>Leave blank to use the default setting</small><textarea name="serviceDescription" rows={2} defaultValue={member?.service_description ?? ""} /></label>
+      <label>Notes for accountant <small>Private, never shown to the member</small><textarea name="billingNotes" rows={3} defaultValue={member?.billing_notes ?? ""} /></label>
+    </fieldset>
   );
 }
 
@@ -1322,7 +1585,7 @@ function SettingsModal({
   close,
   submit,
 }: {
-  settings: { monthlyCost: number; capacityTarget: number };
+  settings: Settings;
   busy: boolean;
   close: () => void;
   submit: (payload: Record<string, unknown>) => void;
@@ -1332,11 +1595,176 @@ function SettingsModal({
     submit(Object.fromEntries(new FormData(event.currentTarget)));
   }
   return (
-    <Modal title="Financial controls" intro="These two numbers drive the live occupancy and operating-result cards." close={close}>
+    <Modal title="Business settings" intro="Adjust capacity, costs, referral policy and the supplier details included in accountant exports." close={close}>
       <form className="modal-form" onSubmit={onSubmit}>
-        <label>Monthly chair-day target<input name="capacityTarget" type="number" min="1" max="150" defaultValue={settings.capacityTarget} required /></label>
-        <label>Monthly operating costs (€)<input name="monthlyCost" type="number" min="0" step="1" defaultValue={settings.monthlyCost / 100} required /></label>
-        <button className="primary-button wide" disabled={busy}>Save controls</button>
+        <fieldset className="form-section">
+          <legend>Operating dashboard</legend>
+          <label>Monthly chair-day target<input name="capacityTarget" type="number" min="1" max="150" defaultValue={settings.capacityTarget} required /></label>
+          <label>Monthly operating costs (€)<input name="monthlyCost" type="number" min="0" step="1" defaultValue={settings.monthlyCost / 100} required /></label>
+          <label>Default referral commission (%)<input name="defaultReferralRate" type="number" min="0" max="100" step="0.01" defaultValue={settings.defaultReferralRate} required /></label>
+        </fieldset>
+        <fieldset className="form-section">
+          <legend>Supplier details for accountant exports</legend>
+          <label>Supplier legal name<input name="supplierName" defaultValue={settings.supplierName} required /></label>
+          <label>Registration number<input name="supplierRegistrationNumber" defaultValue={settings.supplierRegistrationNumber} required /></label>
+          <label>Legal address<textarea name="supplierLegalAddress" rows={2} defaultValue={settings.supplierLegalAddress} /></label>
+          <label>Service address<textarea name="supplierServiceAddress" rows={2} defaultValue={settings.supplierServiceAddress} /></label>
+          <label>Bank<input name="supplierBankName" defaultValue={settings.supplierBankName} /></label>
+          <div className="form-row">
+            <label>SWIFT<input name="supplierSwift" defaultValue={settings.supplierSwift} /></label>
+            <label>IBAN<input name="supplierIban" defaultValue={settings.supplierIban} /></label>
+          </div>
+        </fieldset>
+        <fieldset className="form-section">
+          <legend>Invoice defaults</legend>
+          <div className="form-row">
+            <label>Invoice prefix<input name="invoicePrefix" defaultValue={settings.invoicePrefix} required /></label>
+            <label>Payment due in days<input name="invoiceDueDays" type="number" min="0" max="60" defaultValue={settings.invoiceDueDays} required /></label>
+          </div>
+          <label>Default service description<textarea name="invoiceDefaultDescription" rows={2} defaultValue={settings.invoiceDefaultDescription} /></label>
+          <label>Late-payment penalty per day (%)<input name="invoiceLatePenaltyPercent" type="number" min="0" max="5" step="0.01" defaultValue={settings.invoiceLatePenaltyPercent} required /></label>
+        </fieldset>
+        <button className="primary-button wide" disabled={busy}>Save business settings</button>
+      </form>
+    </Modal>
+  );
+}
+
+function AdjustmentModal({
+  users,
+  transactions,
+  month,
+  defaultReferralRate,
+  busy,
+  error,
+  close,
+  submit,
+}: {
+  users: User[];
+  transactions: Transaction[];
+  month: string;
+  defaultReferralRate: number;
+  busy: boolean;
+  error: string;
+  close: () => void;
+  submit: (payload: Record<string, unknown>) => void;
+}) {
+  const firstUserId = transactions[0]?.user_id ?? users[0]?.id ?? "";
+  const [userId, setUserId] = useState(firstUserId);
+  const [adjustmentType, setAdjustmentType] = useState("discount");
+  const [calculationType, setCalculationType] = useState("percentage");
+  const [adjustmentValue, setAdjustmentValue] = useState("");
+  const dueTransactions = transactions.filter((item) => item.user_id === userId);
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    submit(Object.fromEntries(new FormData(event.currentTarget)));
+  }
+  return (
+    <Modal title="Discount or commission" intro="Apply an auditable adjustment to an open payment. Referral commissions use the referred member's first plan payment as the calculation basis." close={close}>
+      <form className="modal-form" onSubmit={onSubmit}>
+        {error && <div className="error-banner modal-error">{error}</div>}
+        <label>
+          Member receiving the adjustment
+          <select name="userId" value={userId} onChange={(event) => setUserId(event.target.value)} required>
+            {users.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+          </select>
+        </label>
+        <label>
+          Open payment to adjust
+          <select name="transactionId" required>
+            {dueTransactions.map((item) => <option key={item.id} value={item.id}>{item.description} · {money(item.net_amount_cents)}</option>)}
+          </select>
+        </label>
+        {dueTransactions.length === 0 && <p className="form-note strong-note">This member has no open payment in {monthLabel(month)}. Choose another member or month.</p>}
+        <label>
+          Adjustment type
+          <select
+            name="adjustmentType"
+            value={adjustmentType}
+            onChange={(event) => {
+              const nextType = event.target.value;
+              setAdjustmentType(nextType);
+              if (nextType === "referral_commission") setAdjustmentValue(String(defaultReferralRate));
+            }}
+          >
+            <option value="discount">Discount</option>
+            <option value="referral_commission">Referral commission</option>
+            <option value="manual_credit">Manual credit</option>
+            <option value="manual_charge">Additional charge</option>
+          </select>
+        </label>
+        {adjustmentType === "referral_commission" && (
+          <label>
+            New member who was referred
+            <select name="sourceUserId" required>
+              <option value="">Choose member</option>
+              {users.filter((item) => item.id !== userId).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+        )}
+        <div className="form-row">
+          <label>
+            Calculation
+            <select name="calculationType" value={calculationType} onChange={(event) => setCalculationType(event.target.value)}>
+              <option value="percentage">Percentage</option>
+              <option value="fixed">Fixed euro amount</option>
+            </select>
+          </label>
+          <label>
+            {calculationType === "percentage" ? "Percent (%)" : "Amount (€)"}
+            <input name="value" type="number" min="0.01" max={calculationType === "percentage" ? 100 : undefined} step="0.01" value={adjustmentValue} onChange={(event) => setAdjustmentValue(event.target.value)} required />
+          </label>
+        </div>
+        <label>Description<textarea name="description" rows={2} placeholder="Reason shown in the accounting export" /></label>
+        <p className="form-note">A referral commission stays pending until the new member's first plan payment is marked paid. Cancelling an adjustment keeps the audit history.</p>
+        <button className="primary-button wide" disabled={busy || dueTransactions.length === 0}>Apply adjustment</button>
+      </form>
+    </Modal>
+  );
+}
+
+function ExportModal({
+  month,
+  busy,
+  close,
+  submit,
+}: {
+  month: string;
+  busy: boolean;
+  close: () => void;
+  submit: (parameters: URLSearchParams) => void;
+}) {
+  const [range, setRange] = useState<"month" | "all" | "custom">("month");
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const values = new FormData(event.currentTarget);
+    const parameters = new URLSearchParams({ export: "all-history" });
+    if (range === "month") parameters.set("month", month);
+    if (range === "custom") {
+      parameters.set("from", String(values.get("from") ?? ""));
+      parameters.set("to", String(values.get("to") ?? ""));
+    }
+    submit(parameters);
+  }
+  return (
+    <Modal title="Export booking history" intro="Download a clean Excel workbook with summary, bookings, transactions, adjustments and member invoice data." close={close}>
+      <form className="modal-form" onSubmit={onSubmit}>
+        <label>
+          Export period
+          <select value={range} onChange={(event) => setRange(event.target.value as typeof range)}>
+            <option value="month">Current screen: {monthLabel(month)}</option>
+            <option value="all">All recorded history</option>
+            <option value="custom">Custom date range</option>
+          </select>
+        </label>
+        {range === "custom" && (
+          <div className="form-row">
+            <label>From<input name="from" type="date" required /></label>
+            <label>To<input name="to" type="date" required /></label>
+          </div>
+        )}
+        <p className="form-note">Access codes and PINs are intentionally excluded. Cancelled records remain in the history export so the accounting trail is complete.</p>
+        <button className="primary-button wide" disabled={busy}>Download Excel</button>
       </form>
     </Modal>
   );

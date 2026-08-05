@@ -20,6 +20,7 @@ import {
   SLOT_MINUTES,
   type PlanKey,
 } from "../_shared/os-plans";
+import { createXlsxWorkbook, excelDate } from "../_shared/xlsx.mjs";
 
 const COOKIE_PATH = "/chair-access-bh";
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -38,6 +39,10 @@ type SessionUser = {
   access_code: string;
   role: "admin" | "member";
 };
+
+type SettingsMap = Record<string, string>;
+
+type ExportRow = Record<string, unknown>;
 
 type BookingCandidate = {
   id: string;
@@ -65,6 +70,105 @@ function json(data: unknown, status = 200): Response {
 
 function fail(message: string, status = 400): Response {
   return json({ error: message }, status);
+}
+
+function safeText(value: unknown, maxLength = 250): string {
+  return String(value ?? "").trim().slice(0, maxLength);
+}
+
+function validBillingType(value: unknown): string {
+  const billingType = String(value ?? "self_employed");
+  if (!["company", "self_employed", "individual", "other"].includes(billingType)) {
+    throw new Error("Choose a valid billing type.");
+  }
+  return billingType;
+}
+
+function memberProfile(body: Record<string, unknown>) {
+  return {
+    billingType: validBillingType(body.billingType),
+    legalName: safeText(body.legalName, 200),
+    registrationNumber: safeText(body.registrationNumber, 80),
+    legalAddress: safeText(body.legalAddress, 500),
+    email: safeText(body.email, 200),
+    phone: safeText(body.phone, 80),
+    agreementNumber: safeText(body.agreementNumber, 100),
+    serviceDescription: safeText(body.serviceDescription, 500),
+    billingNotes: safeText(body.billingNotes, 1000),
+  };
+}
+
+function profileStatement(userId: string, profile: ReturnType<typeof memberProfile>) {
+  return runtimeEnv().DB.prepare(
+    `INSERT INTO member_profiles(
+       user_id, archived, billing_type, legal_name, registration_number,
+       legal_address, email, phone, agreement_number, service_description,
+       billing_notes, updated_at
+     ) VALUES(?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET
+       billing_type = excluded.billing_type,
+       legal_name = excluded.legal_name,
+       registration_number = excluded.registration_number,
+       legal_address = excluded.legal_address,
+       email = excluded.email,
+       phone = excluded.phone,
+       agreement_number = excluded.agreement_number,
+       service_description = excluded.service_description,
+       billing_notes = excluded.billing_notes,
+       updated_at = excluded.updated_at`,
+  ).bind(
+    userId,
+    profile.billingType,
+    profile.legalName,
+    profile.registrationNumber,
+    profile.legalAddress,
+    profile.email,
+    profile.phone,
+    profile.agreementNumber,
+    profile.serviceDescription,
+    profile.billingNotes,
+    nowIso(),
+  );
+}
+
+function settingStatement(key: string, value: string) {
+  return runtimeEnv().DB.prepare(
+    "INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+  ).bind(key, value);
+}
+
+function cents(value: unknown): number {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) throw new Error("Enter a valid amount.");
+  return Math.round(amount * 100);
+}
+
+function xlsxResponse(bytes: Uint8Array, filename: string): Response {
+  return new Response(bytes, {
+    status: 200,
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "Content-Disposition": `attachment; filename="${filename.replace(/[^A-Za-z0-9._-]/g, "-")}"`,
+      "Cache-Control": "no-store, private",
+      "X-Content-Type-Options": "nosniff",
+      "X-Robots-Tag": "noindex, nofollow, noarchive, nosnippet",
+    },
+  });
+}
+
+function euroCell(amountCents: unknown, style = "currency") {
+  return { value: Number(amountCents ?? 0) / 100, style };
+}
+
+function dateCell(value: unknown) {
+  const date = String(value ?? "");
+  return /^\d{4}-\d{2}-\d{2}$/.test(date)
+    ? { value: excelDate(date), style: "date" }
+    : date;
+}
+
+function textCell(value: unknown, style = "wrap") {
+  return { value: String(value ?? ""), style };
 }
 
 function cookieValue(request: Request, name: string): string | null {
@@ -394,6 +498,362 @@ function auditStatement(
   );
 }
 
+function clockLabel(value: unknown): string {
+  const minutes = Number(value ?? 0);
+  const hours = Math.floor(minutes / 60).toString().padStart(2, "0");
+  return `${hours}:${(minutes % 60).toString().padStart(2, "0")}`;
+}
+
+function tableSheet(
+  name: string,
+  title: string,
+  subtitle: string,
+  columns: Array<{ label: string; width: number }>,
+  dataRows: unknown[][],
+) {
+  const lastColumn = String.fromCharCode(64 + Math.min(columns.length, 26));
+  return {
+    name,
+    columns,
+    rows: [
+      [{ value: title, style: "title" }],
+      [{ value: subtitle, style: "subtitle" }],
+      [],
+      columns.map((column) => ({ value: column.label, style: "header" })),
+      ...dataRows,
+    ],
+    merges: [`A1:${lastColumn}1`, `A2:${lastColumn}2`],
+    freezeRows: 4,
+    autoFilter: `A4:${lastColumn}${Math.max(4, dataRows.length + 4)}`,
+  };
+}
+
+function exportPeriod(url: URL): {
+  start: string;
+  end: string;
+  label: string;
+  filePart: string;
+} {
+  const month = url.searchParams.get("month") ?? "";
+  if (/^\d{4}-\d{2}$/.test(month)) {
+    const range = monthRange(month);
+    return { start: range.start, end: range.end, label: month, filePart: month };
+  }
+  const from = url.searchParams.get("from") ?? "";
+  const to = url.searchParams.get("to") ?? "";
+  const start = /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : "1900-01-01";
+  const inclusiveEnd = /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : "2999-12-31";
+  return {
+    start,
+    end: addDays(inclusiveEnd, 1),
+    label:
+      start === "1900-01-01" && inclusiveEnd === "2999-12-31"
+        ? "All recorded history"
+        : `${start} to ${inclusiveEnd}`,
+    filePart:
+      start === "1900-01-01" && inclusiveEnd === "2999-12-31"
+        ? "all-history"
+        : `${start}-to-${inclusiveEnd}`,
+  };
+}
+
+async function exportWorkbook(request: Request, user: SessionUser): Promise<Response> {
+  if (user.role !== "admin") return fail("Administrator access required.", 403);
+  const url = new URL(request.url);
+  const exportType = url.searchParams.get("export") ?? "";
+  if (!["all-history", "member-accounting"].includes(exportType)) {
+    return fail("Choose a valid export.");
+  }
+  const memberId = String(url.searchParams.get("memberId") ?? "");
+  if (exportType === "member-accounting" && !memberId) {
+    return fail("Choose a member for the accountant export.");
+  }
+  const period = exportPeriod(url);
+  const db = runtimeEnv().DB;
+  const [memberResult, bookingResult, transactionResult, adjustmentResult, settingsResult] =
+    await Promise.all([
+      db.prepare(
+        `SELECT u.id, u.name, u.active, u.created_at,
+           COALESCE(p.archived, 0) AS archived,
+           COALESCE(p.billing_type, 'self_employed') AS billing_type,
+           COALESCE(p.legal_name, '') AS legal_name,
+           COALESCE(p.registration_number, '') AS registration_number,
+           COALESCE(p.legal_address, '') AS legal_address,
+           COALESCE(p.email, '') AS email,
+           COALESCE(p.phone, '') AS phone,
+           COALESCE(p.agreement_number, '') AS agreement_number,
+           COALESCE(p.service_description, '') AS service_description,
+           COALESCE(p.billing_notes, '') AS billing_notes
+         FROM users u LEFT JOIN member_profiles p ON p.user_id = u.id
+         WHERE u.role = 'member' AND (? = '' OR u.id = ?)
+         ORDER BY u.name`,
+      ).bind(memberId, memberId).all<ExportRow>(),
+      db.prepare(
+        `SELECT b.*, u.name AS user_name, COALESCE(p.legal_name, '') AS legal_name
+         FROM bookings b
+         JOIN users u ON u.id = b.user_id
+         LEFT JOIN member_profiles p ON p.user_id = b.user_id
+         WHERE b.date >= ? AND b.date < ? AND (? = '' OR b.user_id = ?)
+         ORDER BY b.date, u.name, b.chair_id, b.start_min`,
+      ).bind(period.start, period.end, memberId, memberId).all<ExportRow>(),
+      db.prepare(
+        `SELECT t.*, u.name AS user_name, COALESCE(p.legal_name, '') AS legal_name,
+           COALESCE((SELECT SUM(f.amount_cents) FROM financial_adjustments f
+             WHERE f.transaction_id = t.id AND f.status = 'active'), 0) AS adjustment_cents,
+           COALESCE((SELECT SUM(f.amount_cents) FROM financial_adjustments f
+             WHERE f.transaction_id = t.id AND f.status = 'pending'), 0) AS pending_adjustment_cents
+         FROM transactions t
+         JOIN users u ON u.id = t.user_id
+         LEFT JOIN member_profiles p ON p.user_id = t.user_id
+         WHERE t.due_date >= ? AND t.due_date < ? AND (? = '' OR t.user_id = ?)
+         ORDER BY t.due_date, u.name, t.created_at`,
+      ).bind(period.start, period.end, memberId, memberId).all<ExportRow>(),
+      db.prepare(
+        `SELECT f.*, u.name AS user_name, source_user.name AS source_user_name,
+           target.description AS target_description,
+           source.description AS source_description
+         FROM financial_adjustments f
+         JOIN users u ON u.id = f.user_id
+         LEFT JOIN users source_user ON source_user.id = f.source_user_id
+         LEFT JOIN transactions target ON target.id = f.transaction_id
+         LEFT JOIN transactions source ON source.id = f.source_transaction_id
+         WHERE f.effective_date >= ? AND f.effective_date < ?
+           AND (? = '' OR f.user_id = ?)
+         ORDER BY f.effective_date, u.name, f.created_at`,
+      ).bind(period.start, period.end, memberId, memberId).all<ExportRow>(),
+      db.prepare("SELECT key, value FROM settings").all<{ key: string; value: string }>(),
+    ]);
+
+  const members = memberResult.results ?? [];
+  if (exportType === "member-accounting" && members.length !== 1) {
+    return fail("Member not found.", 404);
+  }
+  const bookings = bookingResult.results ?? [];
+  const transactions = transactionResult.results ?? [];
+  const adjustments = adjustmentResult.results ?? [];
+  const settings = Object.fromEntries(
+    (settingsResult.results ?? []).map((row) => [row.key, row.value]),
+  ) as SettingsMap;
+  const liveTransactions = transactions.filter((item) => item.status !== "cancelled");
+  const baseCents = liveTransactions.reduce(
+    (sum, item) => sum + Number(item.amount_cents ?? 0),
+    0,
+  );
+  const adjustmentCents = liveTransactions.reduce(
+    (sum, item) => sum + Number(item.adjustment_cents ?? 0),
+    0,
+  );
+  const netCents = baseCents + adjustmentCents;
+  const collectedCents = liveTransactions.reduce(
+    (sum, item) =>
+      sum +
+      (item.status === "paid"
+        ? Number(item.amount_cents ?? 0) + Number(item.adjustment_cents ?? 0)
+        : 0),
+    0,
+  );
+  const confirmedCapacity = bookings.reduce(
+    (sum, item) => sum + (item.status === "confirmed" ? Number(item.capacity ?? 0) : 0),
+    0,
+  );
+  const generatedAt = nowIso();
+  const subtitle = `${period.label} · generated ${generatedAt}`;
+
+  const bookingColumns = [
+    { label: "Member", width: 22 },
+    { label: "Legal name", width: 26 },
+    { label: "Date", width: 12 },
+    { label: "Chair", width: 9 },
+    { label: "Start", width: 9 },
+    { label: "End", width: 9 },
+    { label: "Plan", width: 22 },
+    { label: "Status", width: 12 },
+    { label: "Included plan day", width: 17 },
+    { label: "Chair-days", width: 12 },
+    { label: "Notes", width: 32 },
+    { label: "Booking ID", width: 38 },
+  ];
+  const bookingRows = bookings.map((item) => [
+    item.user_name,
+    item.legal_name,
+    dateCell(item.date),
+    Number(item.chair_id ?? 0),
+    clockLabel(item.start_min),
+    clockLabel(item.end_min),
+    PLANS[item.plan_key as PlanKey]?.name ?? item.plan_key,
+    item.status,
+    item.membership_id ? "Yes" : "No",
+    { value: Number(item.capacity ?? 0), style: "number" },
+    textCell(item.notes),
+    item.id,
+  ]);
+  const transactionColumns = [
+    { label: "Member", width: 22 },
+    { label: "Legal name", width: 26 },
+    { label: "Due date", width: 12 },
+    { label: "Type", width: 13 },
+    { label: "Description", width: 34 },
+    { label: "Base amount", width: 14 },
+    { label: "Adjustments", width: 14 },
+    { label: "Net amount", width: 14 },
+    { label: "Pending credit", width: 14 },
+    { label: "Status", width: 11 },
+    { label: "Paid at", width: 22 },
+    { label: "Transaction ID", width: 38 },
+  ];
+  const transactionRows = transactions.map((item) => {
+    const adjustment = Number(item.adjustment_cents ?? 0);
+    return [
+      item.user_name,
+      item.legal_name,
+      dateCell(item.due_date),
+      item.kind,
+      textCell(item.description),
+      euroCell(item.amount_cents),
+      euroCell(adjustment),
+      euroCell(Number(item.amount_cents ?? 0) + adjustment),
+      euroCell(item.pending_adjustment_cents, Number(item.pending_adjustment_cents ?? 0) ? "pending" : "currency"),
+      item.status,
+      item.paid_at,
+      item.id,
+    ];
+  });
+  const adjustmentColumns = [
+    { label: "Member", width: 22 },
+    { label: "Effective date", width: 14 },
+    { label: "Type", width: 22 },
+    { label: "Description", width: 34 },
+    { label: "Target payment", width: 34 },
+    { label: "Basis", width: 13 },
+    { label: "Rate", width: 11 },
+    { label: "Adjustment", width: 14 },
+    { label: "Status", width: 11 },
+    { label: "Related member", width: 22 },
+    { label: "Source payment", width: 34 },
+    { label: "Adjustment ID", width: 38 },
+  ];
+  const adjustmentRows = adjustments.map((item) => [
+    item.user_name,
+    dateCell(item.effective_date),
+    String(item.adjustment_type ?? "").replaceAll("_", " "),
+    textCell(item.description),
+    textCell(item.target_description),
+    euroCell(item.basis_cents),
+    item.rate_bps === null || item.rate_bps === undefined
+      ? ""
+      : { value: Number(item.rate_bps) / 10_000, style: "percent" },
+    euroCell(item.amount_cents, item.status === "pending" ? "pending" : "currency"),
+    item.status,
+    item.source_user_name,
+    textCell(item.source_description),
+    item.id,
+  ]);
+
+  const sheets = [];
+  if (exportType === "all-history") {
+    sheets.push({
+      name: "Summary",
+      columns: [{ width: 30 }, { width: 22 }],
+      rows: [
+        [{ value: "BARBERS HUB - Booking history export", style: "title" }],
+        [{ value: subtitle, style: "subtitle" }],
+        [],
+        [{ value: "Metric", style: "header" }, { value: "Value", style: "header" }],
+        ["Period", period.label],
+        ["Members", members.length],
+        ["Booking records", bookings.length],
+        ["Confirmed chair-days", { value: confirmedCapacity, style: "number" }],
+        ["Base contracted", euroCell(baseCents)],
+        ["Active adjustments", euroCell(adjustmentCents)],
+        ["Net contracted", euroCell(netCents, "total")],
+        ["Collected", euroCell(collectedCents)],
+        ["Outstanding", euroCell(netCents - collectedCents, "total")],
+      ],
+      merges: ["A1:B1", "A2:B2"],
+      freezeRows: 4,
+    });
+    sheets.push(
+      tableSheet("Bookings", "BARBERS HUB - Booking history", subtitle, bookingColumns, bookingRows),
+      tableSheet("Transactions", "BARBERS HUB - Transactions", subtitle, transactionColumns, transactionRows),
+      tableSheet("Adjustments", "BARBERS HUB - Discounts and commissions", subtitle, adjustmentColumns, adjustmentRows),
+      tableSheet(
+        "Members",
+        "BARBERS HUB - Member register",
+        subtitle,
+        [
+          { label: "Display name", width: 22 }, { label: "Billing type", width: 18 },
+          { label: "Legal name", width: 28 }, { label: "Registration / personal code", width: 24 },
+          { label: "Legal address", width: 38 }, { label: "Email", width: 28 },
+          { label: "Phone", width: 18 }, { label: "Agreement number", width: 24 },
+          { label: "Service description", width: 38 }, { label: "Billing notes", width: 38 },
+          { label: "Access status", width: 15 }, { label: "Member ID", width: 38 },
+        ],
+        members.map((item) => [
+          item.name, String(item.billing_type ?? "").replaceAll("_", " "), item.legal_name,
+          item.registration_number, textCell(item.legal_address), item.email, item.phone,
+          item.agreement_number, textCell(item.service_description), textCell(item.billing_notes),
+          Number(item.archived ?? 0) ? "Archived" : Number(item.active ?? 0) ? "Active" : "Inactive",
+          item.id,
+        ]),
+      ),
+    );
+  } else {
+    const member = members[0];
+    const serviceDescription =
+      String(member.service_description ?? "") ||
+      settings.invoice_default_description ||
+      "BARBERS HUB services";
+    sheets.push({
+      name: "Invoice Data",
+      columns: [{ width: 26 }, { width: 40 }, { width: 26 }, { width: 40 }],
+      rows: [
+        [{ value: "BARBERS HUB - Accountant invoice data", style: "title" }],
+        [{ value: `${member.name} · ${subtitle}`, style: "subtitle" }],
+        [],
+        [{ value: "SUPPLIER", style: "header" }, { value: "Value", style: "header" }, { value: "PAYER", style: "header" }, { value: "Value", style: "header" }],
+        ["Name", settings.supplier_name, "Display name", member.name],
+        ["Registration number", settings.supplier_registration_number, "Legal name", member.legal_name || member.name],
+        ["Legal address", settings.supplier_legal_address, "Billing type", String(member.billing_type ?? "").replaceAll("_", " ")],
+        ["Service address", settings.supplier_service_address, "Registration / personal code", member.registration_number],
+        ["Bank", settings.supplier_bank_name, "Legal address", textCell(member.legal_address)],
+        ["SWIFT", settings.supplier_swift, "Email", member.email],
+        ["IBAN", settings.supplier_iban, "Phone", member.phone],
+        ["Invoice prefix", settings.invoice_prefix, "Agreement number", member.agreement_number],
+        ["Default due days", Number(settings.invoice_due_days ?? 3), "Billing notes", textCell(member.billing_notes)],
+        ["Late penalty", `${settings.invoice_late_penalty_percent ?? "0.5"}% per late day`, "Service period", period.label],
+        [],
+        [{ value: "INVOICE CALCULATION", style: "header" }, { value: "Value", style: "header" }],
+        ["Service description", textCell(serviceDescription)],
+        ["Base charges", euroCell(baseCents)],
+        ["Discounts and active credits", euroCell(adjustmentCents)],
+        ["Amount to invoice", euroCell(netCents, "total")],
+        ["Already paid", euroCell(collectedCents)],
+        ["Outstanding", euroCell(netCents - collectedCents, "total")],
+        ["Pending commissions not yet applied", euroCell(adjustments.filter((item) => item.status === "pending").reduce((sum, item) => sum + Number(item.amount_cents ?? 0), 0), "pending")],
+      ],
+      merges: ["A1:D1", "A2:D2"],
+      freezeRows: 4,
+    });
+    sheets.push(
+      tableSheet("Transactions", `${member.name} - Transactions`, subtitle, transactionColumns, transactionRows),
+      tableSheet("Bookings", `${member.name} - Booking history`, subtitle, bookingColumns, bookingRows),
+      tableSheet("Adjustments", `${member.name} - Discounts and commissions`, subtitle, adjustmentColumns, adjustmentRows),
+    );
+  }
+
+  const workbook = createXlsxWorkbook({
+    title: exportType === "all-history" ? "BARBERS HUB booking history" : `BARBERS HUB accountant data - ${members[0]?.name ?? "member"}`,
+    sheets,
+  });
+  const memberPart = exportType === "member-accounting"
+    ? `-${String(members[0]?.name ?? "member").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`
+    : "";
+  return xlsxResponse(
+    workbook,
+    `barbers-hub${memberPart}-${exportType}-${period.filePart}.xlsx`,
+  );
+}
+
 async function appState(request: Request, user: SessionUser, month: string) {
   const { start, end } = monthRange(month);
   const db = runtimeEnv().DB;
@@ -404,11 +864,30 @@ async function appState(request: Request, user: SessionUser, month: string) {
     settingsResult,
     transactionResult,
     addonResult,
+    adjustmentResult,
   ] =
     await Promise.all([
       user.role === "admin"
         ? db.prepare(
-            "SELECT id, name, access_code, role, active, created_at FROM users ORDER BY active DESC, name",
+            `SELECT u.id, u.name, u.access_code, u.role, u.active, u.created_at,
+               COALESCE(p.archived, 0) AS archived,
+               COALESCE(p.billing_type, 'self_employed') AS billing_type,
+               COALESCE(p.legal_name, '') AS legal_name,
+               COALESCE(p.registration_number, '') AS registration_number,
+               COALESCE(p.legal_address, '') AS legal_address,
+               COALESCE(p.email, '') AS email,
+               COALESCE(p.phone, '') AS phone,
+               COALESCE(p.agreement_number, '') AS agreement_number,
+               COALESCE(p.service_description, '') AS service_description,
+               COALESCE(p.billing_notes, '') AS billing_notes,
+               (SELECT COUNT(*) FROM memberships m WHERE m.user_id = u.id) +
+               (SELECT COUNT(*) FROM bookings b WHERE b.user_id = u.id) +
+               (SELECT COUNT(*) FROM transactions t2 WHERE t2.user_id = u.id) +
+               (SELECT COUNT(*) FROM member_addons a2 WHERE a2.user_id = u.id) +
+               (SELECT COUNT(*) FROM financial_adjustments f WHERE f.user_id = u.id OR f.source_user_id = u.id)
+                 AS history_count
+             FROM users u LEFT JOIN member_profiles p ON p.user_id = u.id
+             ORDER BY COALESCE(p.archived, 0), u.active DESC, u.name`,
           ).all()
         : Promise.resolve({ results: [] }),
       db.prepare(
@@ -426,7 +905,14 @@ async function appState(request: Request, user: SessionUser, month: string) {
       ).bind(start, end).all<Record<string, unknown>>(),
       db.prepare("SELECT key, value FROM settings").all<{ key: string; value: string }>(),
       db.prepare(
-        `SELECT t.*, u.name AS user_name
+        `SELECT t.*, u.name AS user_name,
+           t.amount_cents AS base_amount_cents,
+           COALESCE((SELECT SUM(f.amount_cents) FROM financial_adjustments f
+             WHERE f.transaction_id = t.id AND f.status = 'active'), 0) AS adjustment_cents,
+           t.amount_cents + COALESCE((SELECT SUM(f.amount_cents) FROM financial_adjustments f
+             WHERE f.transaction_id = t.id AND f.status = 'active'), 0) AS net_amount_cents,
+           COALESCE((SELECT SUM(f.amount_cents) FROM financial_adjustments f
+             WHERE f.transaction_id = t.id AND f.status = 'pending'), 0) AS pending_adjustment_cents
          FROM transactions t JOIN users u ON u.id = t.user_id
          WHERE t.due_date >= ? AND t.due_date < ?
            AND t.status != 'cancelled'
@@ -439,6 +925,19 @@ async function appState(request: Request, user: SessionUser, month: string) {
          WHERE a.end_date >= ? AND a.start_date < ? AND a.status = 'active'
            AND (? = 'admin' OR a.user_id = ?)
          ORDER BY a.start_date DESC`,
+      ).bind(start, end, user.role, user.id).all(),
+      db.prepare(
+        `SELECT f.*, u.name AS user_name, source_user.name AS source_user_name,
+           t.description AS transaction_description,
+           source_t.description AS source_transaction_description
+         FROM financial_adjustments f
+         JOIN users u ON u.id = f.user_id
+         JOIN transactions t ON t.id = f.transaction_id
+         LEFT JOIN users source_user ON source_user.id = f.source_user_id
+         LEFT JOIN transactions source_t ON source_t.id = f.source_transaction_id
+         WHERE t.due_date >= ? AND t.due_date < ? AND f.status != 'cancelled'
+           AND (? = 'admin' OR f.user_id = ?)
+         ORDER BY f.created_at DESC`,
       ).bind(start, end, user.role, user.id).all(),
     ]);
 
@@ -454,14 +953,14 @@ async function appState(request: Request, user: SessionUser, month: string) {
   }));
   const transactions = transactionResult.results ?? [];
   const contracted = transactions.reduce(
-    (sum, item) => sum + Number((item as Record<string, unknown>).amount_cents ?? 0),
+    (sum, item) => sum + Number((item as Record<string, unknown>).net_amount_cents ?? 0),
     0,
   );
   const collected = transactions.reduce(
     (sum, item) =>
       sum +
       ((item as Record<string, unknown>).status === "paid"
-        ? Number((item as Record<string, unknown>).amount_cents ?? 0)
+        ? Number((item as Record<string, unknown>).net_amount_cents ?? 0)
         : 0),
     0,
   );
@@ -472,6 +971,14 @@ async function appState(request: Request, user: SessionUser, month: string) {
   );
   const monthlyCost = Number(settings.monthly_cost_cents ?? "200000");
   const capacityTarget = Number(settings.capacity_target ?? "128");
+  const outstanding = transactions.reduce(
+    (sum, item) =>
+      sum +
+      ((item as Record<string, unknown>).status === "due"
+        ? Number((item as Record<string, unknown>).net_amount_cents ?? 0)
+        : 0),
+    0,
+  );
 
   return {
     session: user,
@@ -481,13 +988,29 @@ async function appState(request: Request, user: SessionUser, month: string) {
     bookings,
     transactions,
     addons: addonResult.results ?? [],
-    settings: { monthlyCost, capacityTarget },
+    adjustments: adjustmentResult.results ?? [],
+    settings: {
+      monthlyCost,
+      capacityTarget,
+      invoiceDueDays: Number(settings.invoice_due_days ?? "3"),
+      defaultReferralRate: Number(settings.default_referral_rate_bps ?? "2000") / 100,
+      supplierName: settings.supplier_name ?? "",
+      supplierRegistrationNumber: settings.supplier_registration_number ?? "",
+      supplierLegalAddress: settings.supplier_legal_address ?? "",
+      supplierServiceAddress: settings.supplier_service_address ?? "",
+      supplierBankName: settings.supplier_bank_name ?? "",
+      supplierSwift: settings.supplier_swift ?? "",
+      supplierIban: settings.supplier_iban ?? "",
+      invoicePrefix: settings.invoice_prefix ?? "NOM",
+      invoiceDefaultDescription: settings.invoice_default_description ?? "",
+      invoiceLatePenaltyPercent: Number(settings.invoice_late_penalty_percent ?? "0.5"),
+    },
     finance:
       user.role === "admin"
         ? {
             contracted,
             collected,
-            outstanding: contracted - collected,
+            outstanding,
             monthlyCost,
             projectedResult: contracted - monthlyCost,
             cashResult: collected - monthlyCost,
@@ -507,8 +1030,10 @@ export async function GET(request: Request) {
     const setupRequired = Number(count?.count ?? 0) === 0;
     const user = setupRequired ? null : await sessionUser(request);
     if (!user) return json({ setupRequired, session: null });
+    const url = new URL(request.url);
+    if (url.searchParams.has("export")) return exportWorkbook(request, user);
     const month =
-      new URL(request.url).searchParams.get("month") ??
+      url.searchParams.get("month") ??
       new Date().toISOString().slice(0, 7);
     return json({ setupRequired: false, ...(await appState(request, user, month)) });
   } catch (error) {
@@ -620,12 +1145,19 @@ export async function POST(request: Request) {
       ).bind(accessCode).first<{ id: string }>();
       if (duplicateCode) return fail("That access code is already in use.", 409);
       const id = crypto.randomUUID();
+      const profile = memberProfile(body);
       await db.batch([
         db.prepare(
           `INSERT INTO users(id, name, access_code, pin_hash, role, active, created_at)
            VALUES(?, ?, ?, ?, 'member', 1, ?)`,
         ).bind(id, name, accessCode, await hashSecret(pin), nowIso()),
-        auditStatement(user.id, "create", "user", id, { name, accessCode }),
+        profileStatement(id, profile),
+        auditStatement(user.id, "create", "user", id, {
+          name,
+          accessCode,
+          billingType: profile.billingType,
+          legalName: profile.legalName,
+        }),
       ]);
       return json({ ok: true, member: { id, name, accessCode } });
     }
@@ -648,9 +1180,11 @@ export async function POST(request: Request) {
       ).bind(accessCode, memberId).first<{ id: string }>();
       if (duplicateCode) return fail("That access code is already in use.", 409);
       const newPin = String(body.newPin ?? "").trim();
+      const profile = memberProfile(body);
       const statements: D1PreparedStatement[] = [
         db.prepare("UPDATE users SET name = ?, access_code = ? WHERE id = ? AND role = 'member'")
           .bind(name, accessCode, memberId),
+        profileStatement(memberId, profile),
       ];
       if (newPin) {
         statements.push(
@@ -666,6 +1200,9 @@ export async function POST(request: Request) {
           oldAccessCode: member.access_code,
           newAccessCode: accessCode,
           pinReset: Boolean(newPin),
+          billingType: profile.billingType,
+          legalName: profile.legalName,
+          invoiceFieldsUpdated: true,
         }),
       );
       await db.batch(statements);
@@ -1212,6 +1749,18 @@ export async function POST(request: Request) {
         db.prepare("DELETE FROM booking_slots WHERE booking_id = ?").bind(bookingId),
         db.prepare("UPDATE bookings SET status = 'cancelled' WHERE id = ?").bind(bookingId),
         db.prepare(
+          `UPDATE financial_adjustments SET status = 'cancelled'
+           WHERE transaction_id IN (
+             SELECT id FROM transactions WHERE kind = 'booking' AND reference_id = ? AND status = 'due'
+           )`,
+        ).bind(bookingId),
+        db.prepare(
+          `UPDATE financial_adjustments SET status = 'cancelled'
+           WHERE source_transaction_id IN (
+             SELECT id FROM transactions WHERE kind = 'booking' AND reference_id = ? AND status = 'due'
+           ) AND status = 'pending'`,
+        ).bind(bookingId),
+        db.prepare(
           "UPDATE transactions SET status = 'cancelled' WHERE kind = 'booking' AND reference_id = ? AND status = 'due'",
         ).bind(bookingId),
       ];
@@ -1265,6 +1814,9 @@ export async function POST(request: Request) {
       ];
       if (canCancelCharge && transaction) {
         statements.push(
+          db.prepare(
+            "UPDATE financial_adjustments SET status = 'cancelled' WHERE transaction_id = ? OR (source_transaction_id = ? AND status = 'pending')",
+          ).bind(transaction.id, transaction.id),
           db.prepare("UPDATE transactions SET status = 'cancelled' WHERE id = ? AND status = 'due'")
             .bind(transaction.id),
         );
@@ -1296,10 +1848,28 @@ export async function POST(request: Request) {
     if (action === "mark_paid") {
       if (user.role !== "admin") return fail("Administrator access required.", 403);
       const transactionId = String(body.transactionId ?? "");
+      const transaction = await db.prepare(
+        "SELECT id FROM transactions WHERE id = ? AND status = 'due'",
+      ).bind(transactionId).first<{ id: string }>();
+      if (!transaction) return fail("Open payment not found.", 404);
+      const pending = await db.prepare(
+        `SELECT COUNT(*) AS count FROM financial_adjustments
+         WHERE transaction_id = ? AND status = 'pending'`,
+      ).bind(transactionId).first<{ count: number }>();
+      if (Number(pending?.count ?? 0) > 0) {
+        return fail(
+          "This payment has a pending referral commission. Mark the referred member's first payment as paid, or cancel the commission first.",
+          409,
+        );
+      }
       await db.batch([
         db.prepare(
           "UPDATE transactions SET status = 'paid', paid_at = ? WHERE id = ? AND status = 'due'",
         ).bind(nowIso(), transactionId),
+        db.prepare(
+          `UPDATE financial_adjustments SET status = 'active'
+           WHERE source_transaction_id = ? AND status = 'pending'`,
+        ).bind(transactionId),
         auditStatement(user.id, "mark_paid", "transaction", transactionId, {}),
       ]);
       return json({ ok: true });
@@ -1312,7 +1882,151 @@ export async function POST(request: Request) {
         db.prepare(
           "UPDATE transactions SET status = 'due', paid_at = NULL WHERE id = ? AND status = 'paid'",
         ).bind(transactionId),
+        db.prepare(
+          `UPDATE financial_adjustments SET status = 'pending'
+           WHERE source_transaction_id = ? AND status = 'active'`,
+        ).bind(transactionId),
         auditStatement(user.id, "mark_due", "transaction", transactionId, {}),
+      ]);
+      return json({ ok: true });
+    }
+
+    if (action === "add_adjustment") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const transactionId = String(body.transactionId ?? "");
+      const adjustmentType = String(body.adjustmentType ?? "");
+      const calculationType = String(body.calculationType ?? "");
+      if (!["discount", "referral_commission", "manual_credit", "manual_charge"].includes(adjustmentType)) {
+        return fail("Choose a valid discount, commission, credit or charge.");
+      }
+      if (!["fixed", "percentage"].includes(calculationType)) {
+        return fail("Choose a fixed amount or percentage.");
+      }
+      const target = await db.prepare(
+        `SELECT t.id, t.user_id, t.amount_cents, t.due_date, t.description
+         FROM transactions t WHERE t.id = ? AND t.status = 'due'`,
+      ).bind(transactionId).first<{
+        id: string;
+        user_id: string;
+        amount_cents: number;
+        due_date: string;
+        description: string;
+      }>();
+      if (!target) return fail("Choose an open payment. Paid or cancelled records cannot be changed.", 404);
+
+      const requestedUserId = String(body.userId ?? "");
+      if (requestedUserId && requestedUserId !== target.user_id) {
+        return fail("The selected payment does not belong to that member.", 409);
+      }
+
+      let sourceUserId: string | null = null;
+      let sourceTransactionId: string | null = null;
+      let basisCents = Number(target.amount_cents);
+      let status = "active";
+      let defaultRate = 20;
+      if (adjustmentType === "referral_commission") {
+        sourceUserId = String(body.sourceUserId ?? "");
+        if (!sourceUserId || sourceUserId === target.user_id) {
+          return fail("Choose the new member who was referred.");
+        }
+        const source = await db.prepare(
+          `SELECT id, amount_cents, status FROM transactions
+           WHERE user_id = ? AND kind = 'membership' AND status != 'cancelled'
+           ORDER BY created_at, due_date, id LIMIT 1`,
+        ).bind(sourceUserId).first<{ id: string; amount_cents: number; status: string }>();
+        if (!source) return fail("The referred member has no first-month plan payment yet.", 409);
+        sourceTransactionId = source.id;
+        const existingReferral = await db.prepare(
+          `SELECT id FROM financial_adjustments
+           WHERE source_transaction_id = ? AND adjustment_type = 'referral_commission'
+             AND status IN ('active', 'pending') LIMIT 1`,
+        ).bind(sourceTransactionId).first<{ id: string }>();
+        if (existingReferral) {
+          return fail("A referral commission already exists for this member's first plan payment.", 409);
+        }
+        basisCents = Number(source.amount_cents);
+        status = source.status === "paid" ? "active" : "pending";
+        const rateSetting = await db.prepare(
+          "SELECT value FROM settings WHERE key = 'default_referral_rate_bps'",
+        ).first<{ value: string }>();
+        defaultRate = Number(rateSetting?.value ?? "2000") / 100;
+      }
+
+      const enteredValue = body.value === "" || body.value === undefined
+        ? adjustmentType === "referral_commission" ? defaultRate : Number.NaN
+        : Number(body.value);
+      if (!Number.isFinite(enteredValue) || enteredValue <= 0) {
+        return fail("Enter an amount greater than zero.");
+      }
+      if (calculationType === "percentage" && enteredValue > 100) {
+        return fail("Percentage cannot be more than 100%.");
+      }
+      const rateBps = calculationType === "percentage" ? Math.round(enteredValue * 100) : null;
+      const unsignedAmount = calculationType === "percentage"
+        ? Math.round((basisCents * enteredValue) / 100)
+        : cents(enteredValue);
+      const amountCents = adjustmentType === "manual_charge" ? unsignedAmount : -unsignedAmount;
+      const activeTotal = await db.prepare(
+        `SELECT COALESCE(SUM(amount_cents), 0) AS total FROM financial_adjustments
+         WHERE transaction_id = ? AND status = 'active'`,
+      ).bind(transactionId).first<{ total: number }>();
+      if (Number(target.amount_cents) + Number(activeTotal?.total ?? 0) + amountCents < 0) {
+        return fail("This adjustment would reduce the payment below zero.", 409);
+      }
+      const description = safeText(body.description, 500) ||
+        (adjustmentType === "discount" ? "Member discount" :
+          adjustmentType === "referral_commission" ? "New-member referral commission" :
+            adjustmentType === "manual_credit" ? "Manual credit" : "Additional charge");
+      const id = crypto.randomUUID();
+      await db.batch([
+        db.prepare(
+          `INSERT INTO financial_adjustments(
+             id, user_id, transaction_id, source_user_id, source_transaction_id,
+             adjustment_type, calculation_type, rate_bps, basis_cents, amount_cents,
+             description, effective_date, status, created_by, created_at
+           ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(
+          id,
+          target.user_id,
+          target.id,
+          sourceUserId,
+          sourceTransactionId,
+          adjustmentType,
+          calculationType,
+          rateBps,
+          basisCents,
+          amountCents,
+          description,
+          target.due_date,
+          status,
+          user.id,
+          nowIso(),
+        ),
+        auditStatement(user.id, "create", "financial_adjustment", id, {
+          transactionId,
+          adjustmentType,
+          calculationType,
+          amountCents,
+          sourceUserId,
+          sourceTransactionId,
+          status,
+        }),
+      ]);
+      return json({ ok: true, adjustment: { id, amountCents, status } });
+    }
+
+    if (action === "cancel_adjustment") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const adjustmentId = String(body.adjustmentId ?? "");
+      const adjustment = await db.prepare(
+        `SELECT id FROM financial_adjustments
+         WHERE id = ? AND status IN ('active', 'pending')`,
+      ).bind(adjustmentId).first<{ id: string }>();
+      if (!adjustment) return fail("Active adjustment not found.", 404);
+      await db.batch([
+        db.prepare("UPDATE financial_adjustments SET status = 'cancelled' WHERE id = ?")
+          .bind(adjustmentId),
+        auditStatement(user.id, "cancel", "financial_adjustment", adjustmentId, {}),
       ]);
       return json({ ok: true });
     }
@@ -1321,22 +2035,58 @@ export async function POST(request: Request) {
       if (user.role !== "admin") return fail("Administrator access required.", 403);
       const capacityTarget = Number(body.capacityTarget);
       const monthlyCost = Number(body.monthlyCost);
+      const invoiceDueDays = Number(body.invoiceDueDays);
+      const defaultReferralRate = Number(body.defaultReferralRate);
+      const invoiceLatePenaltyPercent = Number(body.invoiceLatePenaltyPercent);
       if (!Number.isFinite(capacityTarget) || capacityTarget < 1 || capacityTarget > 150) {
         return fail("Capacity target must be between 1 and 150.");
       }
       if (!Number.isFinite(monthlyCost) || monthlyCost < 0) {
         return fail("Monthly cost must be zero or more.");
       }
+      if (!Number.isInteger(invoiceDueDays) || invoiceDueDays < 0 || invoiceDueDays > 60) {
+        return fail("Invoice due days must be between 0 and 60.");
+      }
+      if (!Number.isFinite(defaultReferralRate) || defaultReferralRate < 0 || defaultReferralRate > 100) {
+        return fail("Referral commission must be between 0% and 100%.");
+      }
+      if (!Number.isFinite(invoiceLatePenaltyPercent) || invoiceLatePenaltyPercent < 0 || invoiceLatePenaltyPercent > 5) {
+        return fail("Late-payment penalty must be between 0% and 5% per day.");
+      }
+      const supplierName = safeText(body.supplierName, 200);
+      const supplierRegistrationNumber = safeText(body.supplierRegistrationNumber, 80);
+      const supplierLegalAddress = safeText(body.supplierLegalAddress, 500);
+      const supplierServiceAddress = safeText(body.supplierServiceAddress, 500);
+      const supplierBankName = safeText(body.supplierBankName, 200);
+      const supplierSwift = safeText(body.supplierSwift, 40).toUpperCase();
+      const supplierIban = safeText(body.supplierIban, 80).replace(/\s+/g, "").toUpperCase();
+      const invoicePrefix = safeText(body.invoicePrefix, 20).replace(/[^A-Za-z0-9-]/g, "").toUpperCase();
+      const invoiceDefaultDescription = safeText(body.invoiceDefaultDescription, 500);
+      if (!supplierName || !supplierRegistrationNumber || !invoicePrefix) {
+        return fail("Supplier name, registration number and invoice prefix are required.");
+      }
       await db.batch([
-        db.prepare(
-          "INSERT INTO settings(key, value) VALUES('capacity_target', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        ).bind(String(capacityTarget)),
-        db.prepare(
-          "INSERT INTO settings(key, value) VALUES('monthly_cost_cents', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        ).bind(String(Math.round(monthlyCost * 100))),
-        auditStatement(user.id, "update", "settings", "finance", {
+        settingStatement("capacity_target", String(capacityTarget)),
+        settingStatement("monthly_cost_cents", String(Math.round(monthlyCost * 100))),
+        settingStatement("invoice_due_days", String(invoiceDueDays)),
+        settingStatement("default_referral_rate_bps", String(Math.round(defaultReferralRate * 100))),
+        settingStatement("supplier_name", supplierName),
+        settingStatement("supplier_registration_number", supplierRegistrationNumber),
+        settingStatement("supplier_legal_address", supplierLegalAddress),
+        settingStatement("supplier_service_address", supplierServiceAddress),
+        settingStatement("supplier_bank_name", supplierBankName),
+        settingStatement("supplier_swift", supplierSwift),
+        settingStatement("supplier_iban", supplierIban),
+        settingStatement("invoice_prefix", invoicePrefix),
+        settingStatement("invoice_default_description", invoiceDefaultDescription),
+        settingStatement("invoice_late_penalty_percent", String(invoiceLatePenaltyPercent)),
+        auditStatement(user.id, "update", "settings", "admin", {
           capacityTarget,
           monthlyCost,
+          invoiceDueDays,
+          defaultReferralRate,
+          supplierName,
+          invoicePrefix,
         }),
       ]);
       return json({ ok: true });
@@ -1361,12 +2111,50 @@ export async function POST(request: Request) {
       if (user.role !== "admin") return fail("Administrator access required.", 403);
       const memberId = String(body.memberId ?? "");
       const member = await db.prepare(
-        "SELECT id FROM users WHERE id = ? AND role = 'member' AND active = 0",
+        `SELECT u.id FROM users u LEFT JOIN member_profiles p ON p.user_id = u.id
+         WHERE u.id = ? AND u.role = 'member' AND u.active = 0
+           AND COALESCE(p.archived, 0) = 0`,
       ).bind(memberId).first<{ id: string }>();
       if (!member) return fail("Inactive member not found.", 404);
       await db.batch([
         db.prepare("UPDATE users SET active = 1 WHERE id = ? AND role = 'member'").bind(memberId),
         auditStatement(user.id, "reactivate", "user", memberId, {}),
+      ]);
+      return json({ ok: true });
+    }
+
+    if (action === "archive_member") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const memberId = String(body.memberId ?? "");
+      const member = await db.prepare(
+        "SELECT id, name FROM users WHERE id = ? AND role = 'member'",
+      ).bind(memberId).first<{ id: string; name: string }>();
+      if (!member) return fail("Member not found.", 404);
+      await db.batch([
+        db.prepare("UPDATE users SET active = 0 WHERE id = ? AND role = 'member'").bind(memberId),
+        db.prepare(
+          `INSERT INTO member_profiles(user_id, archived, updated_at) VALUES(?, 1, ?)
+           ON CONFLICT(user_id) DO UPDATE SET archived = 1, updated_at = excluded.updated_at`,
+        ).bind(memberId, nowIso()),
+        db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(memberId),
+        auditStatement(user.id, "archive", "user", memberId, { name: member.name }),
+      ]);
+      return json({ ok: true });
+    }
+
+    if (action === "restore_member") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const memberId = String(body.memberId ?? "");
+      const member = await db.prepare(
+        `SELECT u.id FROM users u JOIN member_profiles p ON p.user_id = u.id
+         WHERE u.id = ? AND u.role = 'member' AND p.archived = 1`,
+      ).bind(memberId).first<{ id: string }>();
+      if (!member) return fail("Archived member not found.", 404);
+      await db.batch([
+        db.prepare("UPDATE users SET active = 1 WHERE id = ? AND role = 'member'").bind(memberId),
+        db.prepare("UPDATE member_profiles SET archived = 0, updated_at = ? WHERE user_id = ?")
+          .bind(nowIso(), memberId),
+        auditStatement(user.id, "restore", "user", memberId, {}),
       ]);
       return json({ ok: true });
     }
@@ -1383,16 +2171,18 @@ export async function POST(request: Request) {
            (SELECT COUNT(*) FROM memberships WHERE user_id = ?) +
            (SELECT COUNT(*) FROM bookings WHERE user_id = ?) +
            (SELECT COUNT(*) FROM transactions WHERE user_id = ?) +
-           (SELECT COUNT(*) FROM member_addons WHERE user_id = ?) AS count`,
-      ).bind(memberId, memberId, memberId, memberId).first<{ count: number }>();
+           (SELECT COUNT(*) FROM member_addons WHERE user_id = ?) +
+           (SELECT COUNT(*) FROM financial_adjustments WHERE user_id = ? OR source_user_id = ?) AS count`,
+      ).bind(memberId, memberId, memberId, memberId, memberId, memberId).first<{ count: number }>();
       if (Number(history?.count ?? 0) > 0) {
         return fail(
-          "This member has booking or financial history and cannot be permanently deleted. Deactivate access instead.",
+          "This member has booking or financial history and cannot be permanently deleted. Archive the member instead.",
           409,
         );
       }
       await db.batch([
         db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(memberId),
+        db.prepare("DELETE FROM member_profiles WHERE user_id = ?").bind(memberId),
         db.prepare("DELETE FROM users WHERE id = ? AND role = 'member'").bind(memberId),
         auditStatement(user.id, "delete", "user", memberId, { name: member.name }),
       ]);
