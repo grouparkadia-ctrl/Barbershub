@@ -637,9 +637,11 @@ export default function BookingOS() {
       )}
       {modal === "booking" && (
         <BookingModal
-          users={isAdmin ? users.filter((user) => user.active) : [state.session as unknown as User]}
+          users={isAdmin ? users.filter((user) => user.active && user.role === "member" && !user.archived) : [state.session as unknown as User]}
           plans={plans.filter((plan) => plan.kind === "payg")}
           prefill={prefill}
+          allowPastDates={isAdmin}
+          error={error}
           busy={busy}
           close={() => setModal(null)}
           submit={(payload) => void run("create_booking", payload, "Booking created.")}
@@ -1440,6 +1442,8 @@ function BookingModal({
   users,
   plans,
   prefill,
+  allowPastDates,
+  error,
   busy,
   close,
   submit,
@@ -1447,6 +1451,8 @@ function BookingModal({
   users: User[];
   plans: Plan[];
   prefill: { date?: string; chair?: number };
+  allowPastDates: boolean;
+  error: string;
   busy: boolean;
   close: () => void;
   submit: (payload: Record<string, unknown>) => void;
@@ -1459,10 +1465,13 @@ function BookingModal({
   return (
     <Modal
       title="Quick booking"
-      intro="Book hourly access, a shift, a Day Pass or an extension. Extensions need a regular booking on the same day and 24 hours' notice."
+      intro={allowPastDates
+        ? "Book current or historical hourly access, a shift or a Day Pass. Historical entries remain subject to chair-conflict checks."
+        : "Book hourly access, a shift, a Day Pass or an extension. Extensions need a regular booking on the same day and 24 hours' notice."}
       close={close}
     >
       <form className="modal-form" onSubmit={onSubmit}>
+        {error && <div className="error-banner modal-error">{error}</div>}
         <label>Member<select name="userId" required>{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
         <label>Model<select name="planKey" value={planKey} onChange={(event) => setPlanKey(event.target.value as PlanKey)}>{plans.map((plan) => <option key={plan.key} value={plan.key}>{plan.name} · {plan.key === "hourly" ? "€10/hour" : money(plan.priceCents)}</option>)}</select></label>
         <div className="form-row">
@@ -1481,7 +1490,8 @@ function BookingModal({
             booking. Book early and late separately when both are needed (€40 total).
           </p>
         )}
-        <button className="primary-button wide" disabled={busy}>Book and add payment</button>
+        {users.length === 0 && <p className="form-note strong-note">Add or reactivate a member before creating a booking.</p>}
+        <button className="primary-button wide" disabled={busy || users.length === 0}>Book and add payment</button>
       </form>
     </Modal>
   );

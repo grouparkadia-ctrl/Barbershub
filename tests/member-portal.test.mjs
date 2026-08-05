@@ -15,8 +15,8 @@ test("keeps the member portal unlisted and excluded from search indexing", async
   const barberPage = await source("for-barbers.html");
 
   assert.match(html, /noindex, nofollow, noarchive, nosnippet/);
-  assert.match(html, /styles\.css\?v=20260805-accounting/);
-  assert.match(html, /app\.js\?v=20260805-accounting/);
+  assert.match(html, /styles\.css\?v=20260805-historical-booking/);
+  assert.match(html, /app\.js\?v=20260805-historical-booking/);
   assert.match(headers, /X-Robots-Tag: noindex, nofollow, noarchive, nosnippet/);
   assert.match(headers, /\/chair-access-bh\/app\.js[\s\S]*Cache-Control: no-cache, must-revalidate/);
   assert.match(headers, /\/chair-access-bh\/styles\.css[\s\S]*Cache-Control: no-cache, must-revalidate/);
@@ -167,6 +167,21 @@ test("supports safe member, booking, plan, and payment corrections", async () =>
     assert.match(bundle, new RegExp(message.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.match(bundle, /Paid \\xB7 Undo/);
+});
+
+test("allows administrators to record historical quick bookings without weakening member rules", async () => {
+  const api = await source("functions/chair-access-bh/api.ts");
+  const client = await source("chair-os-source/BookingOS.tsx");
+  const bundle = await source("chair-access-bh/app.js");
+
+  assert.match(api, /historicalAdminEntry = user\.role === "admin" && date < dateInRiga\(\)/);
+  assert.match(api, /date < dateInRiga\(\) && user\.role !== "admin"/);
+  assert.match(api, /SELECT id FROM users WHERE id = \? AND role = 'member' AND active = 1/);
+  assert.match(api, /!historicalAdminEntry && zonedDateTimeEpoch/);
+  assert.match(client, /user\.active && user\.role === "member" && !user\.archived/);
+  assert.match(client, /Book current or historical hourly access/);
+  assert.match(client, /error && <div className="error-banner modal-error">/);
+  assert.match(bundle, /current or historical hourly access/);
 });
 
 test("stores complete accounting profiles and adjustable business settings", async () => {

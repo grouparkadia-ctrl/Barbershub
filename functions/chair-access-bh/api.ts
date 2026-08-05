@@ -1440,13 +1440,20 @@ export async function POST(request: Request) {
     if (action === "create_booking") {
       const requestedUserId =
         user.role === "admin" ? String(body.userId ?? user.id) : user.id;
+      const bookingMember = await db.prepare(
+        "SELECT id FROM users WHERE id = ? AND role = 'member' AND active = 1",
+      ).bind(requestedUserId).first<{ id: string }>();
+      if (!bookingMember) return fail("Choose an active member.");
       const planKey = body.planKey;
       if (!isPlanKey(planKey) || PLANS[planKey].kind !== "payg") {
         return fail("Choose Hourly, Morning, Evening, Day Pass or an access extension.");
       }
       const plan = PLANS[planKey];
       const date = validDate(body.date);
-      if (date < dateInRiga()) return fail("Past dates cannot be booked.");
+      const historicalAdminEntry = user.role === "admin" && date < dateInRiga();
+      if (date < dateInRiga() && user.role !== "admin") {
+        return fail("Past dates cannot be booked.");
+      }
       if (user.role !== "admin") await assertMemberBookingWindow(requestedUserId, date);
       const requestedChair = validChair(body.chairId ?? 0, true);
       let startMin = plan.startMin;
@@ -1467,7 +1474,7 @@ export async function POST(request: Request) {
       }
       let extensionChair = 0;
       if (plan.requiresBaseBooking) {
-        if (zonedDateTimeEpoch(date, startMin) - Date.now() < EXTENSION_NOTICE_MS) {
+        if (!historicalAdminEntry && zonedDateTimeEpoch(date, startMin) - Date.now() < EXTENSION_NOTICE_MS) {
           return fail("Access extensions require at least 24 hours' notice.");
         }
         const baseBooking = await db.prepare(
