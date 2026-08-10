@@ -6,7 +6,7 @@
             lv: 'Sveiki, BARBERS HUB! Esmu iepazinies ar piedāvājumu un vēlos pieteikt Day Pass.',
             ru: 'Здравствуйте, BARBERS HUB! Я ознакомился с предложением и хочу забронировать Day Pass.'
         },
-        fallbackEmail: 'barbersbronson@gmail.com',
+        fallbackEmail: 'info@barbershub.lv',
         googleFormAction: '',
         googleFormEntries: {
             name: '',
