@@ -36,7 +36,12 @@
         el.setAttribute('alt', t[key]);
       }
     });
-    if (t['page_title']) document.title = t['page_title'];
+    const pageTitleKey = document.body.getAttribute('data-page-title-key');
+    if (pageTitleKey && t[pageTitleKey]) {
+      document.title = t[pageTitleKey];
+    } else if (t['page_title']) {
+      document.title = t['page_title'];
+    }
     document.documentElement.lang = currentLang;
     document.dispatchEvent(new CustomEvent('barbershub:languagechange', {
       detail: { lang: currentLang, translations: t }
