@@ -1,13 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
     <head>
-        <!-- Google tag (gtag.js) -->
-        <script async src="https://www.googletagmanager.com/gtag/js?id=G-XPQT2X3KVT"></script>
+        <!-- Google Consent Mode v2: analytics loads only after visitor approval. -->
         <script>
+          window.GOOGLE_TAG_ID = 'G-XPQT2X3KVT';
+          window.COOKIE_CONSENT_STORAGE_KEY = 'barbershub_cookie_consent_v1';
           window.dataLayer = window.dataLayer || [];
           function gtag(){dataLayer.push(arguments);}
-          gtag('js', new Date());
-          gtag('config', 'G-XPQT2X3KVT');
+          gtag('consent', 'default', {
+            analytics_storage: 'denied',
+            ad_storage: 'denied',
+            ad_user_data: 'denied',
+            ad_personalization: 'denied'
+          });
         </script>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0" />
@@ -60,6 +65,7 @@
         <link rel="stylesheet" href="css/index.min.css" />
         <link rel="stylesheet" href="css/about.min.css" />
         <link rel="stylesheet" href="css/contacts.min.css" />
+        <link rel="stylesheet" href="css/cookie-consent.css?v=20260821-consent" />
         <style>
             .lang-switcher {
                 display: inline-flex;
@@ -483,6 +489,7 @@
                 </div>
             </div>
         </footer>
+        <script src="js/cookie-consent.js?v=20260821-consent"></script>
         <script src="js/analytics-events.js"></script>
         <script src="js/common.min.js"></script>
         <script src="js/index.min.js"></script>

@@ -2,7 +2,7 @@
 // Records only link destination category and page context; no personal data is collected.
 (function () {
   function sendEvent(eventName, linkUrl) {
-    if (typeof window.gtag !== 'function') return;
+    if (window.googleAnalyticsConsentGranted !== true || typeof window.gtag !== 'function') return;
     window.gtag('event', eventName, {
       link_url: linkUrl,
       page_path: window.location.pathname,
