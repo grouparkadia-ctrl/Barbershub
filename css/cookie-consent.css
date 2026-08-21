@@ -66,8 +66,9 @@
 
 .cookie-settings-trigger {
   position: fixed;
-  right: 14px;
-  bottom: 14px;
+  right: auto;
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+  left: 14px;
   z-index: 9999;
   min-height: 36px;
   padding: 8px 12px;
@@ -78,7 +79,12 @@
 @media (max-width: 720px) {
   .cookie-consent {
     right: 10px;
-    bottom: 10px;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    left: 10px;
+  }
+
+  .cookie-settings-trigger {
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
     left: 10px;
   }
 
