@@ -59,6 +59,11 @@ test("keeps the public barber offer aligned with flexible minute pricing", async
   assert.match(page, /https:\/\/reserve\.barbershub\.lv\/\?lang=en/);
   assert.match(page, /v2_rate_price/);
   assert.match(page, /v2_trial_by_agreement/);
+  assert.match(page, /data-card-carousel/);
+  assert.match(page, /data-image-carousel/);
+  assert.match(page, /v2-flex-section/);
+  assert.match(page, /v2-faq-disclosure/);
+  assert.doesNotMatch(page, /v2_ask_whatsapp/);
   assert.doesNotMatch(page, /buy\.stripe\.com|forms\.gle|calendar\.app\.google/);
   assert.doesNotMatch(page, /Day Pass|EUR 50|EUR 10\/hour|EUR 35|Priority Calendar/);
   assert.doesNotMatch(await source("js/barbers-v2.min.js"), /Day Pass/);
