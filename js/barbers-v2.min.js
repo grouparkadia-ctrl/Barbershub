@@ -2,9 +2,9 @@
     var integrationConfig = {
         whatsappPhone: '37125774433',
         whatsappMessages: {
-            en: 'Hi BARBERS HUB, I have reviewed the offer and would like to book a Day Pass.',
-            lv: 'Sveiki, BARBERS HUB! Esmu iepazinies ar piedāvājumu un vēlos pieteikt Day Pass.',
-            ru: 'Здравствуйте, BARBERS HUB! Я ознакомился с предложением и хочу забронировать Day Pass.'
+            en: 'Hi BARBERS HUB! I have a question about reserving a workspace at 0.10 €/min.',
+            lv: 'Sveiki, BARBERS HUB! Man ir jautājums par darba vietas rezervāciju par 0,10 €/min.',
+            ru: 'Здравствуйте, BARBERS HUB! У меня вопрос о бронировании рабочего места по цене 0,10 €/мин.'
         },
         fallbackEmail: 'info@barbershub.lv',
         googleFormAction: '',
@@ -121,7 +121,7 @@
     }
 
     function openMailFallback(data) {
-        var subject = encodeURIComponent(translate('v2_mail_subject', 'BARBERS HUB Day Pass request'));
+        var subject = encodeURIComponent(translate('v2_mail_subject', 'BARBERS HUB workspace request'));
         var body = encodeURIComponent(
             translate('v2_form_name', 'Full name') + ': ' + (data.get('name') || '') + '\n' +
             translate('v2_form_email', 'Email') + ': ' + (data.get('email') || '') + '\n' +
@@ -149,7 +149,7 @@
             submitToGoogleForm(form, data)
                 .then(function () {
                     form.reset();
-                    setFormStatus(form, translate('v2_form_sent', 'Request sent. We will contact you to arrange your Day Pass.'), false);
+                    setFormStatus(form, translate('v2_form_sent', 'Request sent. We will contact you about the workspace.'), false);
                 })
                 .catch(function () {
                     setFormStatus(form, translate('v2_form_email_fallback', 'Could not send the request directly. Opening an email draft instead.'), true);

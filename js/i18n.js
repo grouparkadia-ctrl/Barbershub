@@ -5,7 +5,8 @@
   const STORAGE_KEY = 'bh_lang';
 
   let translations = {};
-  let currentLang = localStorage.getItem(STORAGE_KEY) || DEFAULT_LANG;
+  const queryLang = new URLSearchParams(window.location.search).get('lang');
+  let currentLang = queryLang || localStorage.getItem(STORAGE_KEY) || DEFAULT_LANG;
 
   if (SUPPORTED_LANGS.indexOf(currentLang) === -1) {
     currentLang = DEFAULT_LANG;
@@ -35,6 +36,9 @@
       if (t[key] !== undefined && t[key] !== '') {
         el.setAttribute('alt', t[key]);
       }
+    });
+    document.querySelectorAll('[data-reserve-link]').forEach(function (el) {
+      el.setAttribute('href', 'https://reserve.barbershub.lv/?lang=' + currentLang);
     });
     const pageTitleKey = document.body.getAttribute('data-page-title-key');
     if (pageTitleKey && t[pageTitleKey]) {

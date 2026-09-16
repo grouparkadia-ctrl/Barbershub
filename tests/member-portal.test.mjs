@@ -50,20 +50,30 @@ test("uses the complete approved pricing model", async () => {
   assert.match(client, /isAdmin \|\| !plan\?\.hidden/);
 });
 
-test("keeps the public ladder clear and the premium offer private", async () => {
+test("keeps the public barber offer aligned with flexible minute pricing", async () => {
   const page = await source("for-barbers.html");
-  const english = await source("lang/en.json");
-  const latvian = await source("lang/lv.json");
-  const russian = await source("lang/ru.json");
+  const keys = new Set(
+    [...page.matchAll(/data-i18n="([^"]+)"/g)].map((match) => match[1]),
+  );
 
-  for (const content of [page, english, latvian, russian]) {
-    assert.match(content, /EUR 650/);
-    assert.match(content, /09:00-21:00|9\.00-21\.00/);
-    assert.doesNotMatch(content, /1,250|Dedicated 24\/7 Pro|Personīgā vieta 24\/7|Персональное место 24\/7/);
+  assert.match(page, /https:\/\/reserve\.barbershub\.lv\/\?lang=en/);
+  assert.match(page, /v2_rate_price/);
+  assert.match(page, /v2_trial_by_agreement/);
+  assert.doesNotMatch(page, /buy\.stripe\.com|forms\.gle|calendar\.app\.google/);
+  assert.doesNotMatch(page, /Day Pass|EUR 50|EUR 10\/hour|EUR 35|Priority Calendar/);
+  assert.doesNotMatch(await source("js/barbers-v2.min.js"), /Day Pass/);
+
+  for (const language of ["en", "lv", "ru"]) {
+    const messages = JSON.parse(await source(`lang/${language}.json`));
+    const publicCopy = [...keys].map((key) => messages[key] || "").join("\n");
+    assert.match(publicCopy, /0[,.]10 €\//);
+    assert.match(publicCopy, /20 days|20 dien|20 дн/);
+    assert.match(publicCopy, /TEST BARBERSHUB/);
+    assert.doesNotMatch(publicCopy, /Day Pass|EUR 50|EUR 10|EUR 35|Priority Calendar/);
+    assert.match(publicCopy, /400 €/);
+    assert.match(publicCopy, /525 €/);
+    assert.match(publicCopy, /650 €/);
   }
-  assert.match(page, /v2_member_priority_title/);
-  assert.match(page, /v2_member_extensions_title/);
-  assert.match(page, /v2_faq_q16/);
 });
 
 test("provides every barber-page message in English, Latvian and Russian", async () => {
