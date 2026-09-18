@@ -950,7 +950,12 @@
   .location-photo-credit a { color: #e7dfd2; }
   @media (max-width: 520px) {
     .location-route-notes { grid-template-columns: 1fr; }
-    .location-callout--entrance { top: 50%; }
+    .location-callout { font-size: 9px; }
+    .location-callout span { padding: 7px 8px; }
+    .location-callout--entrance { left: 61%; top: 24%; }
+    .location-callout--entrance i { height: clamp(72px, 24vw, 92px); }
+    .location-callout--parking { left: 7%; top: 48%; }
+    .location-callout--parking i { height: clamp(50px, 18vw, 70px); }
   }
   @media (min-width: 768px) {
     body { background: #0f1012; }
