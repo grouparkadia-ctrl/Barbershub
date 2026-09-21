@@ -459,8 +459,8 @@
 <span class="font-body-sm text-body-sm text-text-muted">Ideal for combining with other part-time work.</span>
 </div>
 <div class="text-right shrink-0">
-<span class="font-headline-md text-headline-md text-text-crisp font-bold">400 €</span>
-<span class="font-label-sm text-label-sm text-text-muted block">40 €/day</span>
+<span class="font-headline-md text-headline-md text-text-crisp font-bold">299 €</span>
+<span class="font-label-sm text-label-sm text-text-muted block">29.90 €/day</span>
 </div>
 </div>
 <!-- FLEX 15 -->
@@ -470,8 +470,8 @@
 <span class="font-body-sm text-body-sm text-text-muted">Regular independent barber base.</span>
 </div>
 <div class="text-right shrink-0">
-<span class="font-headline-md text-headline-md text-text-crisp font-bold">525 €</span>
-<span class="font-label-sm text-label-sm text-text-muted block">35 €/day</span>
+<span class="font-headline-md text-headline-md text-text-crisp font-bold">399 €</span>
+<span class="font-label-sm text-label-sm text-text-muted block">26.60 €/day</span>
 </div>
 </div>
 <!-- FLEX 20 -->
@@ -481,10 +481,11 @@
 <span class="font-body-sm text-body-sm text-text-muted">Full-time intensive calendar operation.</span>
 </div>
 <div class="text-right shrink-0">
-<span class="font-headline-md text-headline-md text-text-crisp font-bold">650 €</span>
-<span class="font-label-sm text-label-sm text-text-muted block">32.50 €/day</span>
+<span class="font-headline-md text-headline-md text-text-crisp font-bold">499 €</span>
+<span class="font-label-sm text-label-sm text-text-muted block">24.95 €/day</span>
 </div>
 </div>
+<p class="font-body-sm text-body-sm text-text-muted bg-surface-deep border border-border-tactile rounded-lg p-3.5">Need to take an extra client outside your FLEX days? Reserve an available workstation from 60 minutes and pay only €0.10 per minute.</p>
 <!-- Trial Day Note -->
 <div class="bg-surface-deep p-3.5 rounded-lg flex items-center justify-between gap-3">
 <div class="flex items-center gap-2">
@@ -745,9 +746,9 @@
 
   const planConfig = {
     minute: { label: 'Minute plan workspace fee', note: 'Pay only for reserved working minutes. Daily workspace fee is capped at 60 €.' },
-    flex10: { days: 10, cost: 400, label: 'FLEX 10 workspace fee', note: '10 working days within a 30-day period. Fixed workspace fee: 400 €.' },
-    flex15: { days: 15, cost: 525, label: 'FLEX 15 workspace fee', note: '15 working days within a 30-day period. Fixed workspace fee: 525 €.' },
-    flex20: { days: 20, cost: 650, label: 'FLEX 20 workspace fee', note: '20 working days within a 30-day period. Fixed workspace fee: 650 €.' }
+    flex10: { days: 10, cost: 299, label: 'FLEX 10 workspace fee', note: '10 working days within a 30-day period. Fixed workspace fee: 299 €. Extra clients outside FLEX days can be booked from 60 minutes at €0.10 per minute.' },
+    flex15: { days: 15, cost: 399, label: 'FLEX 15 workspace fee', note: '15 working days within a 30-day period. Fixed workspace fee: 399 €. Extra clients outside FLEX days can be booked from 60 minutes at €0.10 per minute.' },
+    flex20: { days: 20, cost: 499, label: 'FLEX 20 workspace fee', note: '20 working days within a 30-day period. Fixed workspace fee: 499 €. Extra clients outside FLEX days can be booked from 60 minutes at €0.10 per minute.' }
   };
   let activePlan = 'minute';
 
@@ -1050,5 +1051,5 @@
     if (languageBadge) languageBadge.remove();
   })();
 </script>
-<script src="js/for-barbers-v3-localization.js?v=20260918"></script>
+<script src="js/for-barbers-v3-localization.js?v=20260921-flex-pricing"></script>
 </body></html>

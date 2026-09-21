@@ -52,33 +52,41 @@ test("uses the complete approved pricing model", async () => {
 
 test("keeps the public barber offer aligned with flexible minute pricing", async () => {
   const page = await source("for-barbers.html");
-  const keys = new Set(
-    [...page.matchAll(/data-i18n="([^"]+)"/g)].map((match) => match[1]),
-  );
+  const localization = await source("js/for-barbers-v3-localization.js");
 
   assert.match(page, /https:\/\/reserve\.barbershub\.lv\/\?lang=en/);
-  assert.match(page, /v2_rate_price/);
-  assert.match(page, /v2_trial_by_agreement/);
-  assert.match(page, /data-card-carousel/);
-  assert.match(page, /data-image-carousel/);
-  assert.match(page, /v2-flex-section/);
-  assert.match(page, /v2-faq-disclosure/);
-  assert.doesNotMatch(page, /v2_ask_whatsapp/);
+  assert.match(page, /calc-plan-selectors/);
+  assert.match(page, /data-plan="minute"/);
+  assert.match(page, /data-plan="flex10"/);
+  assert.match(page, /data-plan="flex15"/);
+  assert.match(page, /data-plan="flex20"/);
+  assert.match(page, /space-carousel-dot/);
+  assert.match(page, /faq-accordion/);
   assert.doesNotMatch(page, /buy\.stripe\.com|forms\.gle|calendar\.app\.google/);
   assert.doesNotMatch(page, /Day Pass|EUR 50|EUR 10\/hour|EUR 35|Priority Calendar/);
   assert.doesNotMatch(await source("js/barbers-v2.min.js"), /Day Pass/);
 
-  for (const language of ["en", "lv", "ru"]) {
-    const messages = JSON.parse(await source(`lang/${language}.json`));
-    const publicCopy = [...keys].map((key) => messages[key] || "").join("\n");
-    assert.match(publicCopy, /0[,.]10 €\//);
-    assert.match(publicCopy, /20 days|20 dien|20 дн/);
-    assert.match(publicCopy, /TEST BARBERSHUB/);
-    assert.doesNotMatch(publicCopy, /Day Pass|EUR 50|EUR 10|EUR 35|Priority Calendar/);
-    assert.match(publicCopy, /400 €/);
-    assert.match(publicCopy, /525 €/);
-    assert.match(publicCopy, /650 €/);
+  assert.match(page, /299 €/);
+  assert.match(page, /399 €/);
+  assert.match(page, /499 €/);
+  assert.match(localization, /0,10 €/);
+  assert.match(localization, /20 dien/);
+  assert.doesNotMatch(localization, /400 €|525 €|650 €/);
+});
+
+test("shows the current FLEX pricing and the extra-client minute option in every language", async () => {
+  const page = await source("for-barbers.html");
+  const localization = await source("js/for-barbers-v3-localization.js");
+
+  for (const price of ["299 €", "399 €", "499 €"]) {
+    assert.match(page, new RegExp(price));
   }
+  assert.match(page, /cost: 299/);
+  assert.match(page, /cost: 399/);
+  assert.match(page, /cost: 499/);
+  assert.match(localization, /Vajag pieņemt papildu klientu ārpus FLEX dienām\?/);
+  assert.match(localization, /Need to take an extra client outside your FLEX days\?/);
+  assert.match(localization, /Нужно принять дополнительного клиента вне дней FLEX\?/);
 });
 
 test("provides every barber-page message in English, Latvian and Russian", async () => {
