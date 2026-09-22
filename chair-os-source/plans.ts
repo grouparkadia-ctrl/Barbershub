@@ -29,7 +29,7 @@ export const EARLY_OPEN_MIN = 6 * 60;
 export const OPEN_MIN = 9 * 60;
 export const CLOSE_MIN = 21 * 60;
 export const LATE_CLOSE_MIN = 23 * 60;
-export const SLOT_MINUTES = 30;
+export const SLOT_MINUTES = 15;
 export const CHAIR_COUNT = 5;
 
 export const PLANS: Record<PlanKey, Plan> = {
@@ -37,7 +37,7 @@ export const PLANS: Record<PlanKey, Plan> = {
     key: "hourly",
     name: "Hourly access",
     shortName: "Hourly",
-    priceCents: 1000,
+    priceCents: 600,
     color: "#f59e0b",
     kind: "payg",
     credits: 0,
@@ -105,7 +105,7 @@ export const PLANS: Record<PlanKey, Plan> = {
     key: "flex-10",
     name: "Flex 10",
     shortName: "F10",
-    priceCents: 40000,
+    priceCents: 29900,
     color: "#06b6d4",
     kind: "membership",
     credits: 10,
@@ -116,7 +116,7 @@ export const PLANS: Record<PlanKey, Plan> = {
     key: "flex-15",
     name: "Flex 15",
     shortName: "F15",
-    priceCents: 52500,
+    priceCents: 39900,
     color: "#0ea5e9",
     kind: "membership",
     credits: 15,
@@ -127,7 +127,7 @@ export const PLANS: Record<PlanKey, Plan> = {
     key: "flex-20",
     name: "Flex 20",
     shortName: "F20",
-    priceCents: 65000,
+    priceCents: 49900,
     color: "#22c55e",
     kind: "membership",
     credits: 20,

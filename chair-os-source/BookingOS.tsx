@@ -36,6 +36,7 @@ type Booking = {
   user_id: string;
   user_name: string;
   membership_id: string | null;
+  location_id: string;
   chair_id: number;
   date: string;
   start_min: number;
@@ -50,6 +51,7 @@ type Membership = {
   id: string;
   user_id: string;
   user_name: string;
+  location_id: string;
   plan_key: PlanKey;
   start_date: string;
   end_date: string;
@@ -122,6 +124,26 @@ type Addon = {
   status: string;
 };
 
+type Location = {
+  id: string;
+  name: string;
+  address: string;
+  chair_count: number;
+  open_min: number;
+  close_min: number;
+  working_days_week: number;
+  active: number;
+};
+
+type LocationExpense = {
+  id: string;
+  location_id: string;
+  category: string;
+  amount_cents: number;
+  note: string;
+  active: number;
+};
+
 type State = {
   setupRequired: boolean;
   session: Session | null;
@@ -132,6 +154,10 @@ type State = {
   transactions?: Transaction[];
   adjustments?: Adjustment[];
   addons?: Addon[];
+  locations?: Location[];
+  selectedLocation?: Location;
+  locationExpenses?: LocationExpense[];
+  calendarAccess?: boolean;
   settings?: Settings;
   finance?: {
     contracted: number;
@@ -142,6 +168,9 @@ type State = {
     cashResult: number;
     capacityUsed: number;
     capacityTarget: number;
+    capacityAvailable: number;
+    capacityFree: number;
+    occupancyPercent: number;
   } | null;
 };
 
@@ -156,6 +185,9 @@ type ModalName =
   | "settings"
   | "adjustment"
   | "export"
+  | "location"
+  | "expense"
+  | "security"
   | null;
 
 const weekdayOptions = [
@@ -197,6 +229,17 @@ function monthLabel(month: string): string {
   );
 }
 
+function monthDays(month: string): string[] {
+  const first = new Date(`${month}-01T12:00:00`);
+  const result: string[] = [];
+  const cursor = new Date(first);
+  while (localDate(cursor).slice(0, 7) === month) {
+    result.push(localDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return result;
+}
+
 function dayLabel(date: string): { weekday: string; day: string } {
   const value = new Date(`${date}T12:00:00`);
   return {
@@ -221,8 +264,8 @@ async function requestAction(
   return data;
 }
 
-async function fetchState(month: string): Promise<State> {
-  const response = await fetch(`${API_URL}?month=${month}`, { cache: "no-store" });
+async function fetchState(month: string, locationId: string): Promise<State> {
+  const response = await fetch(`${API_URL}?month=${month}&location=${encodeURIComponent(locationId)}`, { cache: "no-store" });
   const data = (await readApiResponse(response)) as State & { error?: string };
   if (!response.ok) throw new Error(data.error ?? "Unable to load.");
   return data;
@@ -268,6 +311,9 @@ export default function BookingOS() {
   const [busy, setBusy] = useState(false);
   const [month, setMonth] = useState(currentMonth());
   const [weekStart, setWeekStart] = useState(mondayOf(localDate()));
+  const [selectedDay, setSelectedDay] = useState(localDate());
+  const [calendarView, setCalendarView] = useState<"day" | "week" | "month">("week");
+  const [locationId, setLocationId] = useState("elizabetes-75");
   const [modal, setModal] = useState<ModalName>(null);
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
@@ -277,7 +323,7 @@ export default function BookingOS() {
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchState(month);
+      const data = await fetchState(month, locationId);
       setState(data);
       setError("");
     } catch (loadError) {
@@ -285,11 +331,11 @@ export default function BookingOS() {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, locationId]);
 
   useEffect(() => {
     let active = true;
-    void fetchState(month)
+    void fetchState(month, locationId)
       .then((data) => {
         if (!active) return;
         setState(data);
@@ -305,7 +351,7 @@ export default function BookingOS() {
     return () => {
       active = false;
     };
-  }, [month]);
+  }, [month, locationId]);
 
   async function run(
     action: string,
@@ -355,6 +401,9 @@ export default function BookingOS() {
   const transactions = state.transactions ?? [];
   const adjustments = state.adjustments ?? [];
   const addons = state.addons ?? [];
+  const locations = state.locations ?? [];
+  const selectedLocation = state.selectedLocation;
+  const locationExpenses = state.locationExpenses ?? [];
   const isAdmin = state.session.role === "admin";
   const planMap = Object.fromEntries(plans.map((plan) => [plan.key, plan])) as Record<
     PlanKey,
@@ -363,6 +412,11 @@ export default function BookingOS() {
   const weekDays = Array.from({ length: 7 }, (_, index) =>
     addDate(weekStart, index),
   );
+  const visibleDays = calendarView === "day"
+    ? [selectedDay]
+    : calendarView === "week"
+      ? weekDays
+      : monthDays(month);
   const myMemberships = memberships.filter(
     (membership) => membership.user_id === state.session?.id,
   );
@@ -421,7 +475,7 @@ export default function BookingOS() {
           <span className="brand-block">BH</span>
           <div>
             <strong>Booking OS</strong>
-            <small>5 chairs · 7 days · live finance</small>
+            <small>{selectedLocation?.chair_count ?? 5} chairs · {selectedLocation?.working_days_week ?? 7} days · live finance</small>
           </div>
         </div>
         <div className="account">
@@ -457,6 +511,9 @@ export default function BookingOS() {
             <small>Private controls. Members cannot see or use these actions.</small>
           </div>
           <div className="admin-tool-actions">
+            <button className="secondary-button" onClick={() => setModal("security")}>Change my PIN</button>
+            <button className="secondary-button" onClick={() => setModal("location")}>Location & resources</button>
+            <button className="secondary-button" onClick={() => setModal("expense")}>Location expenses</button>
             <button className="secondary-button" onClick={() => setModal("settings")}>Settings & invoice details</button>
             <button className="secondary-button" onClick={() => setModal("export")}>Export booking history</button>
             <button className="primary-button" onClick={() => setModal("adjustment")}>+ Discount or commission</button>
@@ -474,6 +531,14 @@ export default function BookingOS() {
       )}
 
       <section className="action-row">
+        <label className="location-selector">
+          <span>Location</span>
+          <select value={locationId} onChange={(event) => setLocationId(event.target.value)}>
+            {locations.filter((location) => location.active).map((location) => (
+              <option key={location.id} value={location.id}>{location.name}</option>
+            ))}
+          </select>
+        </label>
         <div className="month-nav">
           <button className="icon-button" onClick={() => changeMonth(-1)} aria-label="Previous month">
             ←
@@ -502,27 +567,27 @@ export default function BookingOS() {
               Book plan day
             </button>
           )}
-          <button className="primary-button" onClick={() => openBooking()}>
-            + Quick booking
-          </button>
+          {isAdmin && <button className="primary-button" onClick={() => openBooking()}>+ Quick booking</button>}
         </div>
       </section>
 
-      <section className="calendar-card">
+      {(isAdmin || state.calendarAccess) ? <section className="calendar-card">
         <div className="week-toolbar">
-          <button className="quiet-button" onClick={() => setWeekStart(addDate(weekStart, -7))}>
-            ← Previous
-          </button>
-          <span>
-            Week of <strong>{dayLabel(weekStart).day}</strong>
-          </span>
-          <button className="quiet-button" onClick={() => setWeekStart(addDate(weekStart, 7))}>
-            Next →
-          </button>
+          <div className="view-switcher">
+            {(["day", "week", "month"] as const).map((view) => (
+              <button key={view} className={calendarView === view ? "quiet-button active" : "quiet-button"} onClick={() => setCalendarView(view)}>{view[0].toUpperCase() + view.slice(1)}</button>
+            ))}
+          </div>
+          {calendarView === "day" ? (
+            <><button className="quiet-button" onClick={() => setSelectedDay(addDate(selectedDay, -1))}>← Previous</button><input type="date" value={selectedDay} onChange={(event) => setSelectedDay(event.target.value)} /><button className="quiet-button" onClick={() => setSelectedDay(addDate(selectedDay, 1))}>Next →</button></>
+          ) : calendarView === "week" ? (
+            <><button className="quiet-button" onClick={() => setWeekStart(addDate(weekStart, -7))}>← Previous</button><span>Week of <strong>{dayLabel(weekStart).day}</strong></span><button className="quiet-button" onClick={() => setWeekStart(addDate(weekStart, 7))}>Next →</button></>
+          ) : <span><strong>{monthLabel(month)}</strong> · {bookings.length} bookings</span>}
         </div>
-        <Calendar
-          days={weekDays}
+        {calendarView === "month" ? <MonthCalendar days={visibleDays} bookings={bookings} chairCount={selectedLocation?.chair_count ?? 5} onSelect={(date) => { setSelectedDay(date); setCalendarView("day"); }} /> : <Calendar
+          days={visibleDays}
           bookings={bookings}
+          chairCount={selectedLocation?.chair_count ?? 5}
           planMap={planMap}
           isAdmin={isAdmin}
           currentUserId={state.session.id}
@@ -531,8 +596,18 @@ export default function BookingOS() {
           onCancel={(bookingId) =>
             void run("cancel_booking", { bookingId }, "Booking cancelled.")
           }
-        />
-      </section>
+        />}
+      </section> : (
+        <section className="calendar-card calendar-locked">
+          <span className="eyebrow">FLEX CALENDAR</span>
+          <h2>An active FLEX plan is required.</h2>
+          <p>Your administrator can assign FLEX 10, FLEX 15 or FLEX 20 access for this location.</p>
+        </section>
+      )}
+
+      {isAdmin && selectedLocation && (
+        <LocationSummary location={selectedLocation} expenses={locationExpenses} finance={state.finance ?? null} />
+      )}
 
       {isAdmin && (
         <section className="admin-grid">
@@ -620,6 +695,7 @@ export default function BookingOS() {
         <AssignModal
           users={users.filter((user) => user.active && user.role === "member")}
           plans={plans.filter((plan) => plan.kind === "membership")}
+          locations={locations.filter((location) => location.active)}
           busy={busy}
           close={() => setModal(null)}
           submit={(payload) => void run("assign_plan", payload, "Plan assigned and calendar filled.")}
@@ -638,7 +714,9 @@ export default function BookingOS() {
       {modal === "booking" && (
         <BookingModal
           users={isAdmin ? users.filter((user) => user.active && user.role === "member" && !user.archived) : [state.session as unknown as User]}
-          plans={plans.filter((plan) => plan.kind === "payg")}
+          plans={plans.filter((plan) => plan.key === "hourly")}
+          locations={locations.filter((location) => location.active)}
+          defaultLocationId={selectedLocation?.id ?? locationId}
           prefill={prefill}
           allowPastDates={isAdmin}
           error={error}
@@ -651,6 +729,7 @@ export default function BookingOS() {
         <EditBookingModal
           booking={selectedBooking}
           plan={planMap[selectedBooking.plan_key]}
+          location={locations.find((item) => item.id === selectedBooking.location_id) ?? selectedLocation}
           busy={busy}
           close={() => setModal(null)}
           submit={(payload) =>
@@ -662,6 +741,7 @@ export default function BookingOS() {
         <PlanDayModal
           memberships={bookableMemberships}
           planMap={planMap}
+          chairCount={selectedLocation?.chair_count ?? 5}
           busy={busy}
           close={() => setModal(null)}
           submit={(payload) =>
@@ -703,6 +783,31 @@ export default function BookingOS() {
           busy={busy}
           close={() => setModal(null)}
           submit={(parameters) => void exportData(parameters, "barbers-hub-history.xlsx")}
+        />
+      )}
+      {modal === "location" && (
+        <LocationModal
+          location={selectedLocation}
+          busy={busy}
+          close={() => setModal(null)}
+          submit={(payload) => void run("save_location", payload, "Location resources updated.")}
+        />
+      )}
+      {modal === "expense" && selectedLocation && (
+        <ExpenseModal
+          location={selectedLocation}
+          expenses={locationExpenses}
+          busy={busy}
+          close={() => setModal(null)}
+          submit={(payload) => void run("save_location_expense", payload, "Location expense saved.")}
+          remove={(expenseId) => void run("delete_location_expense", { expenseId }, "Location expense removed.")}
+        />
+      )}
+      {modal === "security" && (
+        <SecurityModal
+          busy={busy}
+          close={() => setModal(null)}
+          submit={(payload) => void run("change_own_pin", payload, "PIN changed. Sign in again with the new PIN.")}
         />
       )}
     </main>
@@ -781,12 +886,9 @@ function FinanceStrip({
   finance: NonNullable<State["finance"]>;
   onSettings: () => void;
 }) {
-  const occupancy = Math.min(
-    100,
-    Math.round((finance.capacityUsed / finance.capacityTarget) * 100),
-  );
+  const occupancy = Math.min(100, finance.occupancyPercent);
   const cards = [
-    ["Chair days", `${finance.capacityUsed.toFixed(1)} / ${finance.capacityTarget}`, `${occupancy}% reserved`],
+    ["Capacity", `${finance.capacityUsed.toFixed(1)} / ${finance.capacityAvailable.toFixed(1)}`, `${occupancy}% occupied · ${finance.capacityFree.toFixed(1)} free`],
     ["Contracted", money(finance.contracted), "Paid + due"],
     ["Collected", money(finance.collected), `${money(finance.outstanding)} outstanding`],
     ["Projected result", money(finance.projectedResult), `${money(finance.monthlyCost)} monthly costs`],
@@ -805,6 +907,25 @@ function FinanceStrip({
         </article>
       ))}
       <button className="settings-button" onClick={onSettings} aria-label="Financial settings">⚙</button>
+    </section>
+  );
+}
+
+function LocationSummary({
+  location,
+  expenses,
+  finance,
+}: {
+  location: Location;
+  expenses: LocationExpense[];
+  finance: NonNullable<State["finance"]> | null;
+}) {
+  return (
+    <section className="location-summary">
+      <div><span>LOCATION</span><strong>{location.name}</strong><small>{location.address}</small></div>
+      <div><span>RESOURCES</span><strong>{location.chair_count} chairs</strong><small>{minutesLabel(location.open_min)}–{minutesLabel(location.close_min)} · {location.working_days_week} days/week</small></div>
+      <div><span>BASE EXPENSES</span><strong>{money(expenses.filter((item) => item.active).reduce((sum, item) => sum + item.amount_cents, 0))}</strong><small>{expenses.filter((item) => item.active).length} cost categories</small></div>
+      <div><span>FREE CAPACITY</span><strong>{finance ? `${finance.capacityFree.toFixed(1)} chair-days` : "—"}</strong><small>{finance ? `${finance.occupancyPercent}% occupied` : "Current month"}</small></div>
     </section>
   );
 }
@@ -857,6 +978,7 @@ function MemberStrip({
 function Calendar({
   days,
   bookings,
+  chairCount,
   planMap,
   isAdmin,
   currentUserId,
@@ -866,6 +988,7 @@ function Calendar({
 }: {
   days: string[];
   bookings: Booking[];
+  chairCount: number;
   planMap: Record<PlanKey, Plan>;
   isAdmin: boolean;
   currentUserId: string;
@@ -885,7 +1008,7 @@ function Calendar({
             </div>
           );
         })}
-        {[1, 2, 3, 4, 5].map((chair) => (
+        {Array.from({ length: chairCount }, (_, index) => index + 1).map((chair) => (
           <div className="calendar-row" key={chair}>
             <div className="chair-label"><span>{chair}</span><small>Chair</small></div>
             {days.map((day) => {
@@ -959,7 +1082,7 @@ function Calendar({
           return (
             <section className="mobile-day" key={day}>
               <header><strong>{label.weekday}, {label.day}</strong><span>{dayBookings.length} bookings</span></header>
-              {[1, 2, 3, 4, 5].map((chair) => {
+              {Array.from({ length: chairCount }, (_, index) => index + 1).map((chair) => {
                 const items = dayBookings.filter((booking) => booking.chair_id === chair);
                 return (
                   <div className="mobile-chair" key={chair}>
@@ -1007,6 +1130,36 @@ function Calendar({
         })}
       </div>
     </>
+  );
+}
+
+function MonthCalendar({
+  days,
+  bookings,
+  chairCount,
+  onSelect,
+}: {
+  days: string[];
+  bookings: Booking[];
+  chairCount: number;
+  onSelect: (date: string) => void;
+}) {
+  const leading = days.length ? (new Date(`${days[0]}T12:00:00`).getDay() + 6) % 7 : 0;
+  return (
+    <div className="month-calendar">
+      {weekdayOptions.map(([label]) => <strong className="month-weekday" key={label}>{label}</strong>)}
+      {Array.from({ length: leading }, (_, index) => <span key={`blank-${index}`} />)}
+      {days.map((day) => {
+        const dayBookings = bookings.filter((booking) => booking.date === day);
+        const used = dayBookings.reduce((sum, booking) => sum + booking.capacity, 0);
+        const occupancy = chairCount ? Math.min(100, Math.round((used / chairCount) * 100)) : 0;
+        return (
+          <button className={day === localDate() ? "month-day today" : "month-day"} key={day} onClick={() => onSelect(day)}>
+            <span>{day.slice(-2)}</span><strong>{dayBookings.length} bookings</strong><small>{occupancy}% used</small>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1360,17 +1513,21 @@ function BillingFields({ member }: { member?: User }) {
 function AssignModal({
   users,
   plans,
+  locations,
   busy,
   close,
   submit,
 }: {
   users: User[];
   plans: Plan[];
+  locations: Location[];
   busy: boolean;
   close: () => void;
   submit: (payload: Record<string, unknown>) => void;
 }) {
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [selectedLocationId, setSelectedLocationId] = useState(locations[0]?.id ?? "");
+  const selectedLocation = locations.find((location) => location.id === selectedLocationId) ?? locations[0];
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     submit({ ...Object.fromEntries(new FormData(event.currentTarget)), weekdays: selectedDays });
@@ -1380,9 +1537,10 @@ function AssignModal({
       <form className="modal-form" onSubmit={onSubmit}>
         <label>Member<select name="userId" required>{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
         <label>Plan<select name="planKey" required>{plans.map((plan) => <option key={plan.key} value={plan.key}>{plan.name} · {money(plan.priceCents)}</option>)}</select></label>
+        <label>Location<select name="locationId" value={selectedLocationId} onChange={(event) => setSelectedLocationId(event.target.value)} required>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
         <div className="form-row">
           <label>Start date<input name="startDate" type="date" defaultValue={localDate()} required /></label>
-          <label>Chair<select name="preferredChair" defaultValue="0"><option value="0">Auto assign</option>{[1,2,3,4,5].map((chair) => <option value={chair} key={chair}>Chair {chair}</option>)}</select></label>
+          <label>Chair<select name="preferredChair" defaultValue="0"><option value="0">Auto assign</option>{Array.from({ length: selectedLocation?.chair_count ?? 0 }, (_, index) => index + 1).map((chair) => <option value={chair} key={chair}>Chair {chair}</option>)}</select></label>
         </div>
         <label>Daily time<select name="shiftKey" defaultValue="day-pass"><option value="day-pass">09:00–21:00</option><option value="morning">09:00–15:00</option><option value="evening">15:00–21:00</option></select></label>
         <fieldset><legend>Working days</legend><div className="weekday-picker">{weekdayOptions.map(([label, value]) => <button type="button" key={value} className={selectedDays.includes(value) ? "selected" : ""} onClick={() => setSelectedDays((days) => days.includes(value) ? days.filter((day) => day !== value) : [...days, value])}>{label}</button>)}</div></fieldset>
@@ -1441,6 +1599,8 @@ function AddonModal({
 function BookingModal({
   users,
   plans,
+  locations,
+  defaultLocationId,
   prefill,
   allowPastDates,
   error,
@@ -1450,6 +1610,8 @@ function BookingModal({
 }: {
   users: User[];
   plans: Plan[];
+  locations: Location[];
+  defaultLocationId: string;
   prefill: { date?: string; chair?: number };
   allowPastDates: boolean;
   error: string;
@@ -1457,7 +1619,15 @@ function BookingModal({
   close: () => void;
   submit: (payload: Record<string, unknown>) => void;
 }) {
-  const [planKey, setPlanKey] = useState<PlanKey>("day-pass");
+  const [planKey, setPlanKey] = useState<PlanKey>("hourly");
+  const [selectedLocationId, setSelectedLocationId] = useState(defaultLocationId);
+  const selectedLocation = locations.find((location) => location.id === selectedLocationId) ?? locations[0];
+  const startOptions = selectedLocation
+    ? Array.from({ length: Math.max(0, Math.floor((selectedLocation.close_min - selectedLocation.open_min) / 15)) }, (_, index) => selectedLocation.open_min + index * 15)
+    : [];
+  const endOptions = selectedLocation
+    ? Array.from({ length: Math.max(0, Math.floor((selectedLocation.close_min - selectedLocation.open_min) / 15)) }, (_, index) => selectedLocation.open_min + 15 + index * 15)
+    : [];
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     submit(Object.fromEntries(new FormData(event.currentTarget)));
@@ -1466,22 +1636,23 @@ function BookingModal({
     <Modal
       title="Quick booking"
       intro={allowPastDates
-        ? "Book current or historical hourly access, a shift or a Day Pass. Historical entries remain subject to chair-conflict checks."
-        : "Book hourly access, a shift, a Day Pass or an extension. Extensions need a regular booking on the same day and 24 hours' notice."}
+        ? "Record current or historical minute-based access. Price is €0.10/min with a 60-minute minimum; 15-minute preparation buffers are reserved automatically."
+        : "Minute-based access is booked through the public reservation flow."}
       close={close}
     >
       <form className="modal-form" onSubmit={onSubmit}>
         {error && <div className="error-banner modal-error">{error}</div>}
         <label>Member<select name="userId" required>{users.map((user) => <option key={user.id} value={user.id}>{user.name}</option>)}</select></label>
-        <label>Model<select name="planKey" value={planKey} onChange={(event) => setPlanKey(event.target.value as PlanKey)}>{plans.map((plan) => <option key={plan.key} value={plan.key}>{plan.name} · {plan.key === "hourly" ? "€10/hour" : money(plan.priceCents)}</option>)}</select></label>
+        <label>Model<select name="planKey" value={planKey} onChange={(event) => setPlanKey(event.target.value as PlanKey)}>{plans.map((plan) => <option key={plan.key} value={plan.key}>{plan.name} · €0.10/min</option>)}</select></label>
+        <label>Location<select name="locationId" value={selectedLocationId} onChange={(event) => setSelectedLocationId(event.target.value)} required>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
         <div className="form-row">
           <label>Date<input name="date" type="date" defaultValue={prefill.date ?? localDate()} required /></label>
-          <label>Chair<select name="chairId" defaultValue={String(prefill.chair ?? 0)}><option value="0">Auto assign</option>{[1,2,3,4,5].map((chair) => <option value={chair} key={chair}>Chair {chair}</option>)}</select></label>
+          <label>Chair<select name="chairId" defaultValue={String(prefill.chair ?? 0)}><option value="0">Auto assign</option>{Array.from({ length: selectedLocation?.chair_count ?? 0 }, (_, index) => index + 1).map((chair) => <option value={chair} key={chair}>Chair {chair}</option>)}</select></label>
         </div>
         {planKey === "hourly" && (
           <div className="form-row">
-            <label>Start<select name="startMin" defaultValue="540">{Array.from({length:17},(_,i)=>540+i*30).map((minute)=><option value={minute} key={minute}>{minutesLabel(minute)}</option>)}</select></label>
-            <label>End<select name="endMin" defaultValue="660">{Array.from({length:17},(_,i)=>660+i*30).filter((minute)=>minute<=1260).map((minute)=><option value={minute} key={minute}>{minutesLabel(minute)}</option>)}</select></label>
+            <label>Start<select name="startMin" defaultValue={String(selectedLocation?.open_min ?? 540)}>{startOptions.map((minute)=><option value={minute} key={minute}>{minutesLabel(minute)}</option>)}</select></label>
+            <label>End<select name="endMin" defaultValue={String((selectedLocation?.open_min ?? 540) + 60)}>{endOptions.map((minute)=><option value={minute} key={minute}>{minutesLabel(minute)}</option>)}</select></label>
           </div>
         )}
         {(planKey === "early-extension" || planKey === "late-extension") && (
@@ -1500,22 +1671,26 @@ function BookingModal({
 function EditBookingModal({
   booking,
   plan,
+  location,
   busy,
   close,
   submit,
 }: {
   booking: Booking;
   plan: Plan;
+  location?: Location;
   busy: boolean;
   close: () => void;
   submit: (payload: Record<string, unknown>) => void;
 }) {
   const editableTime = booking.membership_id !== null || booking.plan_key === "hourly";
-  const startOptions = Array.from({ length: 24 }, (_, index) => 540 + index * 30).filter(
-    (minute) => minute < 1260,
+  const locationOpen = location?.open_min ?? 540;
+  const locationClose = location?.close_min ?? 1260;
+  const startOptions = Array.from({ length: 80 }, (_, index) => locationOpen + index * 15).filter(
+    (minute) => minute < locationClose,
   );
-  const endOptions = Array.from({ length: 24 }, (_, index) => 570 + index * 30).filter(
-    (minute) => minute <= 1260,
+  const endOptions = Array.from({ length: 80 }, (_, index) => locationOpen + 15 + index * 15).filter(
+    (minute) => minute <= locationClose,
   );
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1534,7 +1709,7 @@ function EditBookingModal({
         </div>
         <div className="form-row">
           <label>Date<input name="date" type="date" min={localDate()} defaultValue={booking.date} required /></label>
-          <label>Chair<select name="chairId" defaultValue={String(booking.chair_id)}>{[1,2,3,4,5].map((chair) => <option value={chair} key={chair}>Chair {chair}</option>)}</select></label>
+          <label>Chair<select name="chairId" defaultValue={String(booking.chair_id)}>{Array.from({ length: location?.chair_count ?? 5 }, (_, index) => index + 1).map((chair) => <option value={chair} key={chair}>Chair {chair}</option>)}</select></label>
         </div>
         {editableTime ? (
           <div className="form-row">
@@ -1557,12 +1732,14 @@ function EditBookingModal({
 function PlanDayModal({
   memberships,
   planMap,
+  chairCount,
   busy,
   close,
   submit,
 }: {
   memberships: Membership[];
   planMap: Record<PlanKey, Plan>;
+  chairCount: number;
   busy: boolean;
   close: () => void;
   submit: (payload: Record<string, unknown>) => void;
@@ -1581,7 +1758,7 @@ function PlanDayModal({
         <label>Member plan<select name="membershipId">{memberships.map((membership) => <option key={membership.id} value={membership.id}>{membership.user_name} · {planMap[membership.plan_key]?.name} · {membership.credits_total-membership.credits_used} remaining</option>)}</select></label>
         <div className="form-row">
           <label>Date<input name="date" type="date" defaultValue={localDate()} required /></label>
-          <label>Chair<select name="chairId" defaultValue="0"><option value="0">Auto assign</option>{[1,2,3,4,5].map((chair) => <option value={chair} key={chair}>Chair {chair}</option>)}</select></label>
+          <label>Chair<select name="chairId" defaultValue="0"><option value="0">Auto assign</option>{Array.from({ length: chairCount }, (_, index) => index + 1).map((chair) => <option value={chair} key={chair}>Chair {chair}</option>)}</select></label>
         </div>
         <button className="primary-button wide" disabled={busy}>Book plan day</button>
       </form>
@@ -1635,6 +1812,111 @@ function SettingsModal({
           <label>Late-payment penalty per day (%)<input name="invoiceLatePenaltyPercent" type="number" min="0" max="5" step="0.01" defaultValue={settings.invoiceLatePenaltyPercent} required /></label>
         </fieldset>
         <button className="primary-button wide" disabled={busy}>Save business settings</button>
+      </form>
+    </Modal>
+  );
+}
+
+function LocationModal({
+  location,
+  busy,
+  close,
+  submit,
+}: {
+  location?: Location;
+  busy: boolean;
+  close: () => void;
+  submit: (payload: Record<string, unknown>) => void;
+}) {
+  const [createNew, setCreateNew] = useState(false);
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    submit(Object.fromEntries(new FormData(event.currentTarget)));
+  }
+  const timeOptions = Array.from({ length: 69 }, (_, index) => 360 + index * 15);
+  return (
+    <Modal title="Location & resources" intro="Set the workstation count, operating hours and working days. Monthly capacity is calculated automatically." close={close}>
+      <form className="modal-form" onSubmit={onSubmit} key={createNew ? "new" : location?.id}>
+        <label className="checkbox-line"><input type="checkbox" checked={createNew} onChange={(event) => setCreateNew(event.target.checked)} /> Add a new location</label>
+        <input type="hidden" name="locationId" value={createNew ? "" : location?.id ?? ""} />
+        <label>Location name<input name="name" defaultValue={createNew ? "" : location?.name ?? ""} required /></label>
+        <label>Address<textarea name="address" rows={2} defaultValue={createNew ? "" : location?.address ?? ""} /></label>
+        <label>Workstations<input name="chairCount" type="number" min="1" max="50" defaultValue={createNew ? 1 : location?.chair_count ?? 5} required /></label>
+        <div className="form-row">
+          <label>Opens<select name="openMin" defaultValue={String(createNew ? 540 : location?.open_min ?? 540)}>{timeOptions.filter((minute) => minute < 1380).map((minute) => <option value={minute} key={minute}>{minutesLabel(minute)}</option>)}</select></label>
+          <label>Closes<select name="closeMin" defaultValue={String(createNew ? 1260 : location?.close_min ?? 1260)}>{timeOptions.filter((minute) => minute > 360).map((minute) => <option value={minute} key={minute}>{minutesLabel(minute)}</option>)}</select></label>
+        </div>
+        <label>Working days per week<select name="workingDaysWeek" defaultValue={String(createNew ? 7 : location?.working_days_week ?? 7)}>{[1,2,3,4,5,6,7].map((days) => <option value={days} key={days}>{days} days</option>)}</select></label>
+        <p className="form-note">Capacity = workstations × operating days in the selected month. Existing bookings are retained when resources are updated.</p>
+        <button className="primary-button wide" disabled={busy}>{createNew ? "Add location" : "Save location resources"}</button>
+      </form>
+    </Modal>
+  );
+}
+
+const expenseLabels: Record<string, string> = {
+  rent: "Rent",
+  utilities: "Utilities",
+  marketing: "Marketing",
+  insurance: "Insurance",
+  leasing: "Leasing",
+  spotify: "Spotify / music",
+  pos: "POS / payment terminal",
+  internet: "Internet & phone",
+  cleaning: "Cleaning & laundry",
+  accounting: "Accounting",
+  maintenance: "Repairs & maintenance",
+  other: "Other",
+};
+
+function ExpenseModal({
+  location,
+  expenses,
+  busy,
+  close,
+  submit,
+  remove,
+}: {
+  location: Location;
+  expenses: LocationExpense[];
+  busy: boolean;
+  close: () => void;
+  submit: (payload: Record<string, unknown>) => void;
+  remove: (expenseId: string) => void;
+}) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    submit(Object.fromEntries(new FormData(event.currentTarget)));
+  }
+  return (
+    <Modal title="Location expenses" intro={`Monthly base costs for ${location.name}. Select a category and enter only the amount.`} close={close}>
+      <div className="expense-list">
+        {expenses.filter((item) => item.active).map((item) => (
+          <div className="expense-row" key={item.id}><span><strong>{expenseLabels[item.category] ?? item.category}</strong><small>{item.note || "Monthly base cost"}</small></span><b>{money(item.amount_cents)}</b><button className="danger-link" onClick={() => window.confirm("Remove this expense?") && remove(item.id)}>Remove</button></div>
+        ))}
+      </div>
+      <form className="modal-form" onSubmit={onSubmit}>
+        <input type="hidden" name="locationId" value={location.id} />
+        <label>Expense category<select name="category">{Object.entries(expenseLabels).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label>
+        <label>Monthly amount (€)<input name="amount" type="number" min="0" step="0.01" required /></label>
+        <label>Note <small>optional</small><input name="note" maxLength={300} /></label>
+        <button className="primary-button wide" disabled={busy}>Add monthly expense</button>
+      </form>
+    </Modal>
+  );
+}
+
+function SecurityModal({ busy, close, submit }: { busy: boolean; close: () => void; submit: (payload: Record<string, unknown>) => void }) {
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    submit(Object.fromEntries(new FormData(event.currentTarget)));
+  }
+  return (
+    <Modal title="Change my PIN" intro="Changing the PIN signs out every active session for this account." close={close}>
+      <form className="modal-form" onSubmit={onSubmit}>
+        <label>Current PIN<input name="currentPin" type="password" inputMode="numeric" pattern="\d{6,8}" required /></label>
+        <label>New PIN<input name="newPin" type="password" inputMode="numeric" pattern="\d{6,8}" required /></label>
+        <button className="primary-button wide" disabled={busy}>Change PIN</button>
       </form>
     </Modal>
   );

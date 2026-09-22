@@ -15,8 +15,8 @@ test("keeps the member portal unlisted and excluded from search indexing", async
   const barberPage = await source("for-barbers.html");
 
   assert.match(html, /noindex, nofollow, noarchive, nosnippet/);
-  assert.match(html, /styles\.css\?v=20260805-historical-booking/);
-  assert.match(html, /app\.js\?v=20260805-historical-booking/);
+  assert.match(html, /styles\.css\?v=20260922-business-os/);
+  assert.match(html, /app\.js\?v=20260922-business-os/);
   assert.match(headers, /X-Robots-Tag: noindex, nofollow, noarchive, nosnippet/);
   assert.match(headers, /\/chair-access-bh\/app\.js[\s\S]*Cache-Control: no-cache, must-revalidate/);
   assert.match(headers, /\/chair-access-bh\/styles\.css[\s\S]*Cache-Control: no-cache, must-revalidate/);
@@ -43,7 +43,10 @@ test("uses the complete approved pricing model", async () => {
     assert.match(plans, new RegExp(name.replace("/", "\\/")));
   }
   assert.match(plans, /priceCents:\s*3500/);
-  assert.match(plans, /priceCents:\s*65000/);
+  assert.match(plans, /priceCents:\s*29900/);
+  assert.match(plans, /priceCents:\s*39900/);
+  assert.match(plans, /priceCents:\s*49900/);
+  assert.match(plans, /SLOT_MINUTES = 15/);
   assert.match(plans, /priceCents:\s*125000/);
   assert.match(plans, /hidden:\s*true/);
   assert.match(client, /isAdmin \? plans : plans\.filter\(\(plan\) => !plan\.hidden\)/);
@@ -106,7 +109,7 @@ test("protects bookings, PIN access, and login attempts", async () => {
   const api = await source("functions/chair-access-bh/api.ts");
   const client = await source("chair-os-source/BookingOS.tsx");
 
-  assert.match(database, /PRIMARY KEY \(chair_id, date, slot\)/);
+  assert.match(database, /PRIMARY KEY \(location_id, chair_id, date, slot\)/);
   assert.match(database, /capacity_target', '128'/);
   assert.match(database, /monthly_cost_cents', '200000'/);
   assert.match(api, /\\d\{6,8\}/);
@@ -120,6 +123,14 @@ test("protects bookings, PIN access, and login attempts", async () => {
   assert.match(api, /EXTENSION_NOTICE_MS = 24 \* 60 \* 60 \* 1000/);
   assert.match(api, /Book a regular working period on that date before adding an extension/);
   assert.match(database, /CREATE TABLE IF NOT EXISTS member_addons/);
+  assert.match(database, /CREATE TABLE IF NOT EXISTS locations/);
+  assert.match(database, /CREATE TABLE IF NOT EXISTS location_expenses/);
+  assert.match(api, /action === "owner_recovery"/);
+  assert.match(api, /action === "change_own_pin"/);
+  assert.match(api, /FLEX_BUFFER_MINUTES = 15/);
+  assert.match(client, /Location & resources/);
+  assert.match(client, /Location expenses/);
+  assert.match(client, /MonthCalendar/);
 });
 
 test("build output points only to the scoped member API", async () => {
@@ -198,13 +209,13 @@ test("allows administrators to record historical quick bookings without weakenin
   const bundle = await source("chair-access-bh/app.js");
 
   assert.match(api, /historicalAdminEntry = user\.role === "admin" && date < dateInRiga\(\)/);
-  assert.match(api, /date < dateInRiga\(\) && user\.role !== "admin"/);
+  assert.match(api, /Minute-based bookings are managed through the public reservation flow/);
   assert.match(api, /SELECT id FROM users WHERE id = \? AND role = 'member' AND active = 1/);
   assert.match(api, /!historicalAdminEntry && zonedDateTimeEpoch/);
   assert.match(client, /user\.active && user\.role === "member" && !user\.archived/);
-  assert.match(client, /Book current or historical hourly access/);
+  assert.match(client, /Record current or historical minute-based access/);
   assert.match(client, /error && <div className="error-banner modal-error">/);
-  assert.match(bundle, /current or historical hourly access/);
+  assert.match(bundle, /current or historical minute-based access/);
 });
 
 test("stores complete accounting profiles and adjustable business settings", async () => {

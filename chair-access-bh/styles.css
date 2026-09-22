@@ -416,6 +416,19 @@ textarea:hover {
   background: var(--panel);
 }
 
+.calendar-locked {
+  min-height: 220px;
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.calendar-locked h2,
+.calendar-locked p {
+  margin: 0;
+}
+
 .week-toolbar {
   min-height: 54px;
   padding: 8px 12px;
@@ -868,6 +881,137 @@ legend {
   color: white;
 }
 
+.location-selector {
+  min-width: 220px;
+}
+
+.location-selector span {
+  display: block;
+  color: var(--muted);
+  font-size: .68rem;
+  letter-spacing: .08em;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.location-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 18px 0;
+}
+
+.location-summary > div {
+  background: var(--panel);
+  padding: 16px;
+}
+
+.location-summary span,
+.location-summary small {
+  display: block;
+  color: var(--muted);
+  font-size: .72rem;
+}
+
+.location-summary strong {
+  display: block;
+  margin: 6px 0;
+}
+
+.view-switcher {
+  display: flex;
+  gap: 4px;
+}
+
+.view-switcher .active {
+  background: var(--red);
+  color: #fff;
+}
+
+.month-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.month-weekday {
+  background: #171719;
+  color: var(--muted);
+  padding: 9px;
+  text-align: center;
+  font-size: .7rem;
+}
+
+.month-day {
+  min-height: 96px;
+  border: 0;
+  background: var(--panel);
+  color: #fff;
+  padding: 10px;
+  text-align: left;
+}
+
+.month-day:hover,
+.month-day.today {
+  background: #2b2b30;
+}
+
+.month-day span,
+.month-day strong,
+.month-day small {
+  display: block;
+}
+
+.month-day strong {
+  margin: 10px 0 4px;
+  font-size: .75rem;
+}
+
+.month-day small {
+  color: var(--muted);
+}
+
+.expense-list {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 18px;
+}
+
+.expense-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.expense-row span,
+.expense-row small {
+  display: block;
+}
+
+.expense-row small {
+  color: var(--muted);
+}
+
+.checkbox-line {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 9px;
+}
+
+.checkbox-line input {
+  width: auto;
+}
+
 @media (max-width: 1000px) {
   .finance-strip {
     grid-template-columns: repeat(2, 1fr);
@@ -918,6 +1062,24 @@ legend {
   .action-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .location-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .month-calendar {
+    grid-template-columns: repeat(7, minmax(42px, 1fr));
+    overflow-x: auto;
+  }
+
+  .month-day {
+    min-height: 78px;
+    padding: 6px;
+  }
+
+  .month-day strong {
+    font-size: .62rem;
   }
 
   .admin-tool-actions {

@@ -2,6 +2,7 @@ export type RuntimeEnv = {
   DB: D1Database;
   PIN_SALT?: string;
   SETUP_KEY?: string;
+  RECOVERY_KEY?: string;
 };
 
 let boundEnv: RuntimeEnv | null = null;
@@ -41,6 +42,7 @@ export function ensureSchema(): Promise<void> {
       db.prepare(`CREATE TABLE IF NOT EXISTS memberships (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
+        location_id TEXT NOT NULL DEFAULT 'elizabetes-75',
         plan_key TEXT NOT NULL,
         start_date TEXT NOT NULL,
         end_date TEXT NOT NULL,
@@ -51,11 +53,34 @@ export function ensureSchema(): Promise<void> {
         status TEXT NOT NULL,
         created_at TEXT NOT NULL
       )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS locations (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        address TEXT NOT NULL DEFAULT '',
+        chair_count INTEGER NOT NULL DEFAULT 5 CHECK(chair_count BETWEEN 1 AND 50),
+        open_min INTEGER NOT NULL DEFAULT 540,
+        close_min INTEGER NOT NULL DEFAULT 1260,
+        working_days_week INTEGER NOT NULL DEFAULT 7 CHECK(working_days_week BETWEEN 1 AND 7),
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`),
+      db.prepare(`CREATE TABLE IF NOT EXISTS location_expenses (
+        id TEXT PRIMARY KEY,
+        location_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL CHECK(amount_cents >= 0),
+        note TEXT NOT NULL DEFAULT '',
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )`),
       db.prepare(`CREATE TABLE IF NOT EXISTS bookings (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         membership_id TEXT,
-        chair_id INTEGER NOT NULL CHECK(chair_id BETWEEN 1 AND 5),
+        location_id TEXT NOT NULL DEFAULT 'elizabetes-75',
+        chair_id INTEGER NOT NULL CHECK(chair_id BETWEEN 1 AND 50),
         date TEXT NOT NULL,
         start_min INTEGER NOT NULL,
         end_min INTEGER NOT NULL,
@@ -69,10 +94,11 @@ export function ensureSchema(): Promise<void> {
       )`),
       db.prepare(`CREATE TABLE IF NOT EXISTS booking_slots (
         booking_id TEXT NOT NULL,
+        location_id TEXT NOT NULL DEFAULT 'elizabetes-75',
         chair_id INTEGER NOT NULL,
         date TEXT NOT NULL,
         slot INTEGER NOT NULL,
-        PRIMARY KEY (chair_id, date, slot)
+        PRIMARY KEY (location_id, chair_id, date, slot)
       )`),
       db.prepare(`CREATE TABLE IF NOT EXISTS transactions (
         id TEXT PRIMARY KEY,
@@ -159,6 +185,9 @@ export function ensureSchema(): Promise<void> {
       db.prepare("CREATE INDEX IF NOT EXISTS financial_adjustments_user_idx ON financial_adjustments(user_id, effective_date)"),
       db.prepare("CREATE INDEX IF NOT EXISTS financial_adjustments_transaction_idx ON financial_adjustments(transaction_id, status)"),
       db.prepare("CREATE INDEX IF NOT EXISTS financial_adjustments_source_idx ON financial_adjustments(source_transaction_id, status)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS locations_active_idx ON locations(active, name)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS location_expenses_location_idx ON location_expenses(location_id, active)"),
+      db.prepare("INSERT OR IGNORE INTO locations(id, name, address, chair_count, open_min, close_min, working_days_week, active, created_at, updated_at) VALUES('elizabetes-75', 'BARBERS HUB Elizabetes', 'Elizabetes iela 75, Riga', 5, 540, 1260, 7, 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"),
       db.prepare("INSERT OR IGNORE INTO settings(key, value) VALUES('capacity_target', '128')"),
       db.prepare("INSERT OR IGNORE INTO settings(key, value) VALUES('monthly_cost_cents', '200000')"),
       db.prepare("INSERT OR IGNORE INTO settings(key, value) VALUES('invoice_due_days', '3')"),

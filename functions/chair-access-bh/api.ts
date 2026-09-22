@@ -10,7 +10,6 @@ import {
   type RuntimeEnv,
 } from "../_shared/os-db";
 import {
-  CHAIR_COUNT,
   CLOSE_MIN,
   EARLY_OPEN_MIN,
   isPlanKey,
@@ -32,6 +31,22 @@ const PRIORITY_CALENDAR_PRICE_CENTS = 5000;
 const PRIORITY_CALENDAR_LIMIT = 3;
 const EXTENSION_NOTICE_MS = 24 * 60 * 60 * 1000;
 const RIGA_TIME_ZONE = "Europe/Riga";
+const DEFAULT_LOCATION_ID = "elizabetes-75";
+const FLEX_BUFFER_MINUTES = 15;
+const EXPENSE_CATEGORIES = new Set([
+  "rent",
+  "utilities",
+  "marketing",
+  "insurance",
+  "leasing",
+  "spotify",
+  "pos",
+  "internet",
+  "cleaning",
+  "accounting",
+  "maintenance",
+  "other",
+]);
 
 type SessionUser = {
   id: string;
@@ -48,6 +63,7 @@ type BookingCandidate = {
   id: string;
   userId: string;
   membershipId: string | null;
+  locationId: string;
   chairId: number;
   date: string;
   startMin: number;
@@ -55,6 +71,17 @@ type BookingCandidate = {
   planKey: PlanKey;
   amountCents: number;
   createdBy: string;
+};
+
+type LocationRow = {
+  id: string;
+  name: string;
+  address: string;
+  chair_count: number;
+  open_min: number;
+  close_min: number;
+  working_days_week: number;
+  active: number;
 };
 
 function json(data: unknown, status = 200): Response {
@@ -369,13 +396,27 @@ async function assertMemberBookingWindow(userId: string, date: string): Promise<
   }
 }
 
-function validChair(value: unknown, allowAuto = false): number {
+function validChair(value: unknown, chairCount: number, allowAuto = false): number {
   const chair = Number(value);
   if (allowAuto && chair === 0) return 0;
-  if (!Number.isInteger(chair) || chair < 1 || chair > CHAIR_COUNT) {
-    throw new Error("Choose a chair from 1 to 5.");
+  if (!Number.isInteger(chair) || chair < 1 || chair > chairCount) {
+    throw new Error(`Choose a chair from 1 to ${chairCount}.`);
   }
   return chair;
+}
+
+async function locationById(value: unknown, requireActive = true): Promise<LocationRow> {
+  const id = safeText(value || DEFAULT_LOCATION_ID, 80).toLowerCase().replace(/[^a-z0-9-]/g, "");
+  const row = await runtimeEnv().DB.prepare(
+    `SELECT id, name, address, chair_count, open_min, close_min, working_days_week, active
+     FROM locations WHERE id = ?${requireActive ? " AND active = 1" : ""}`,
+  ).bind(id).first<LocationRow>();
+  if (!row) throw new Error("Choose an active location.");
+  return row;
+}
+
+function chairIds(location: LocationRow): number[] {
+  return Array.from({ length: Number(location.chair_count) }, (_, index) => index + 1);
 }
 
 function slotNumbers(startMin: number, endMin: number): number[] {
@@ -386,7 +427,7 @@ function slotNumbers(startMin: number, endMin: number): number[] {
     startMin % SLOT_MINUTES !== 0 ||
     endMin % SLOT_MINUTES !== 0
   ) {
-    throw new Error("Bookings must use 30-minute steps between 06:00 and 23:00.");
+    throw new Error("Bookings must use 15-minute steps between 06:00 and 23:00.");
   }
   const slots: number[] = [];
   for (let minute = startMin; minute < endMin; minute += SLOT_MINUTES) {
@@ -395,58 +436,68 @@ function slotNumbers(startMin: number, endMin: number): number[] {
   return slots;
 }
 
-function keyFor(chair: number, date: string, slot: number): string {
-  return `${chair}|${date}|${slot}`;
+function keyFor(locationId: string, chair: number, date: string, slot: number): string {
+  return `${locationId}|${chair}|${date}|${slot}`;
 }
 
-async function occupiedSlots(start: string, end: string): Promise<Set<string>> {
+async function occupiedSlots(locationId: string, start: string, end: string): Promise<Set<string>> {
   const result = await runtimeEnv().DB.prepare(
-    "SELECT chair_id, date, slot FROM booking_slots WHERE date >= ? AND date <= ?",
-  ).bind(start, end).all<{ chair_id: number; date: string; slot: number }>();
+    "SELECT location_id, chair_id, date, slot FROM booking_slots WHERE location_id = ? AND date >= ? AND date <= ?",
+  ).bind(locationId, start, end).all<{ location_id: string; chair_id: number; date: string; slot: number }>();
   return new Set(
-    (result.results ?? []).map((row) => keyFor(row.chair_id, row.date, row.slot)),
+    (result.results ?? []).map((row) => keyFor(row.location_id, row.chair_id, row.date, row.slot)),
   );
 }
 
 async function occupiedSlotsExcluding(
+  locationId: string,
   start: string,
   end: string,
   bookingId: string,
 ): Promise<Set<string>> {
   const result = await runtimeEnv().DB.prepare(
-    `SELECT chair_id, date, slot FROM booking_slots
-     WHERE date >= ? AND date <= ? AND booking_id != ?`,
-  ).bind(start, end, bookingId).all<{ chair_id: number; date: string; slot: number }>();
+    `SELECT location_id, chair_id, date, slot FROM booking_slots
+     WHERE location_id = ? AND date >= ? AND date <= ? AND booking_id != ?`,
+  ).bind(locationId, start, end, bookingId).all<{ location_id: string; chair_id: number; date: string; slot: number }>();
   return new Set(
-    (result.results ?? []).map((row) => keyFor(row.chair_id, row.date, row.slot)),
+    (result.results ?? []).map((row) => keyFor(row.location_id, row.chair_id, row.date, row.slot)),
   );
 }
 
 function chairIsFree(
   occupied: Set<string>,
+  locationId: string,
   chair: number,
   date: string,
   startMin: number,
   endMin: number,
 ): boolean {
   return slotNumbers(startMin, endMin).every(
-    (slot) => !occupied.has(keyFor(chair, date, slot)),
+    (slot) => !occupied.has(keyFor(locationId, chair, date, slot)),
   );
 }
 
+function occupancyRange(planKey: PlanKey, startMin: number, endMin: number): [number, number] {
+  if (planKey !== "hourly") return [startMin, endMin];
+  return [Math.max(EARLY_OPEN_MIN, startMin - FLEX_BUFFER_MINUTES), Math.min(LATE_CLOSE_MIN, endMin + FLEX_BUFFER_MINUTES)];
+}
+
 function reserveCandidate(occupied: Set<string>, candidate: BookingCandidate): void {
-  for (const slot of slotNumbers(candidate.startMin, candidate.endMin)) {
-    occupied.add(keyFor(candidate.chairId, candidate.date, slot));
+  const [blockedStart, blockedEnd] = occupancyRange(candidate.planKey, candidate.startMin, candidate.endMin);
+  for (const slot of slotNumbers(blockedStart, blockedEnd)) {
+    occupied.add(keyFor(candidate.locationId, candidate.chairId, candidate.date, slot));
   }
 }
 
 function bookingStatements(candidate: BookingCandidate): D1PreparedStatement[] {
   const db = runtimeEnv().DB;
   const createdAt = nowIso();
-  const slots = slotNumbers(candidate.startMin, candidate.endMin);
-  const slotValues = slots.map(() => "(?, ?, ?, ?)").join(", ");
+  const [blockedStart, blockedEnd] = occupancyRange(candidate.planKey, candidate.startMin, candidate.endMin);
+  const slots = slotNumbers(blockedStart, blockedEnd);
+  const slotValues = slots.map(() => "(?, ?, ?, ?, ?)").join(", ");
   const slotParams = slots.flatMap((slot) => [
     candidate.id,
+    candidate.locationId,
     candidate.chairId,
     candidate.date,
     slot,
@@ -454,13 +505,14 @@ function bookingStatements(candidate: BookingCandidate): D1PreparedStatement[] {
   return [
     db.prepare(
       `INSERT INTO bookings(
-        id, user_id, membership_id, chair_id, date, start_min, end_min,
+        id, user_id, membership_id, location_id, chair_id, date, start_min, end_min,
         plan_key, amount_cents, capacity, status, notes, created_by, created_at
-      ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', '', ?, ?)`,
+      ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', '', ?, ?)`,
     ).bind(
       candidate.id,
       candidate.userId,
       candidate.membershipId,
+      candidate.locationId,
       candidate.chairId,
       candidate.date,
       candidate.startMin,
@@ -472,7 +524,7 @@ function bookingStatements(candidate: BookingCandidate): D1PreparedStatement[] {
       createdAt,
     ),
     db.prepare(
-      `INSERT INTO booking_slots(booking_id, chair_id, date, slot) VALUES ${slotValues}`,
+      `INSERT INTO booking_slots(booking_id, location_id, chair_id, date, slot) VALUES ${slotValues}`,
     ).bind(...slotParams),
   ];
 }
@@ -854,9 +906,23 @@ async function exportWorkbook(request: Request, user: SessionUser): Promise<Resp
   );
 }
 
-async function appState(request: Request, user: SessionUser, month: string) {
+async function appState(request: Request, user: SessionUser, month: string, requestedLocationId: string) {
   const { start, end } = monthRange(month);
   const db = runtimeEnv().DB;
+  const locationsResult = await db.prepare(
+    "SELECT id, name, address, chair_count, open_min, close_min, working_days_week, active FROM locations ORDER BY active DESC, name",
+  ).all<LocationRow>();
+  const locations = locationsResult.results ?? [];
+  const selectedLocation =
+    locations.find((location) => location.id === requestedLocationId && location.active) ??
+    locations.find((location) => location.active) ??
+    locations[0];
+  if (!selectedLocation) throw new Error("No location is configured.");
+  const expenseResult = user.role === "admin"
+    ? await db.prepare(
+        "SELECT id, location_id, category, amount_cents, note, active FROM location_expenses WHERE location_id = ? ORDER BY active DESC, category",
+      ).bind(selectedLocation.id).all()
+    : { results: [] };
   const [
     usersResult,
     membershipsResult,
@@ -893,16 +959,16 @@ async function appState(request: Request, user: SessionUser, month: string) {
       db.prepare(
         `SELECT m.*, u.name AS user_name
          FROM memberships m JOIN users u ON u.id = m.user_id
-         WHERE m.end_date >= ? AND m.start_date < ?
-           AND (? = 'admin' OR m.user_id = ?)
+         WHERE m.location_id = ? AND m.end_date >= ? AND m.start_date < ?
+            AND (? = 'admin' OR m.user_id = ?)
          ORDER BY m.start_date DESC`,
-      ).bind(start, end, user.role, user.id).all(),
+      ).bind(selectedLocation.id, start, end, user.role, user.id).all(),
       db.prepare(
         `SELECT b.*, u.name AS user_name
          FROM bookings b JOIN users u ON u.id = b.user_id
-         WHERE b.date >= ? AND b.date < ? AND b.status = 'confirmed'
+          WHERE b.location_id = ? AND b.date >= ? AND b.date < ? AND b.status = 'confirmed'
          ORDER BY b.date, b.chair_id, b.start_min`,
-      ).bind(start, end).all<Record<string, unknown>>(),
+      ).bind(selectedLocation.id, start, end).all<Record<string, unknown>>(),
       db.prepare("SELECT key, value FROM settings").all<{ key: string; value: string }>(),
       db.prepare(
         `SELECT t.*, u.name AS user_name,
@@ -914,11 +980,16 @@ async function appState(request: Request, user: SessionUser, month: string) {
            COALESCE((SELECT SUM(f.amount_cents) FROM financial_adjustments f
              WHERE f.transaction_id = t.id AND f.status = 'pending'), 0) AS pending_adjustment_cents
          FROM transactions t JOIN users u ON u.id = t.user_id
-         WHERE t.due_date >= ? AND t.due_date < ?
-           AND t.status != 'cancelled'
-           AND (? = 'admin' OR t.user_id = ?)
+          WHERE t.due_date >= ? AND t.due_date < ?
+            AND t.status != 'cancelled'
+            AND (? = 'admin' OR t.user_id = ?)
+            AND (
+              (t.kind = 'membership' AND EXISTS(SELECT 1 FROM memberships lm WHERE lm.id = t.reference_id AND lm.location_id = ?))
+              OR (t.kind = 'booking' AND EXISTS(SELECT 1 FROM bookings lb WHERE lb.id = t.reference_id AND lb.location_id = ?))
+              OR t.kind = 'addon'
+            )
          ORDER BY t.created_at DESC`,
-      ).bind(start, end, user.role, user.id).all(),
+      ).bind(start, end, user.role, user.id, selectedLocation.id, selectedLocation.id).all(),
       db.prepare(
         `SELECT a.*, u.name AS user_name
          FROM member_addons a JOIN users u ON u.id = a.user_id
@@ -944,13 +1015,16 @@ async function appState(request: Request, user: SessionUser, month: string) {
   const settings = Object.fromEntries(
     (settingsResult.results ?? []).map((row) => [row.key, row.value]),
   );
-  const bookings = (bookingResult.results ?? []).map((booking) => ({
+  const calendarAccess = user.role === "admin" || (membershipsResult.results ?? []).some(
+    (membership) => String((membership as Record<string, unknown>).status ?? "") === "active",
+  );
+  const bookings = calendarAccess ? (bookingResult.results ?? []).map((booking) => ({
     ...booking,
     user_name:
       user.role === "admin" || booking.user_id === user.id
         ? booking.user_name
         : "Reserved",
-  }));
+  })) : [];
   const transactions = transactionResult.results ?? [];
   const contracted = transactions.reduce(
     (sum, item) => sum + Number((item as Record<string, unknown>).net_amount_cents ?? 0),
@@ -969,8 +1043,17 @@ async function appState(request: Request, user: SessionUser, month: string) {
       sum + Number((booking as Record<string, unknown>).capacity ?? 0),
     0,
   );
-  const monthlyCost = Number(settings.monthly_cost_cents ?? "200000");
-  const capacityTarget = Number(settings.capacity_target ?? "128");
+  const locationExpenses = expenseResult.results ?? [];
+  const expenseTotal = locationExpenses.reduce(
+    (sum, item) => sum + (Number((item as Record<string, unknown>).active ?? 0) ? Number((item as Record<string, unknown>).amount_cents ?? 0) : 0),
+    0,
+  );
+  const monthlyCost = locationExpenses.length > 0
+    ? expenseTotal
+    : Number(settings.monthly_cost_cents ?? "200000");
+  const daysInMonth = Math.round((Date.parse(`${end}T12:00:00Z`) - Date.parse(`${start}T12:00:00Z`)) / 86_400_000);
+  const capacityAvailable = Number(selectedLocation.chair_count) * daysInMonth * (Number(selectedLocation.working_days_week) / 7);
+  const capacityTarget = Math.round(capacityAvailable * 100) / 100;
   const outstanding = transactions.reduce(
     (sum, item) =>
       sum +
@@ -989,6 +1072,10 @@ async function appState(request: Request, user: SessionUser, month: string) {
     transactions,
     addons: addonResult.results ?? [],
     adjustments: adjustmentResult.results ?? [],
+    locations,
+    selectedLocation,
+    locationExpenses,
+    calendarAccess,
     settings: {
       monthlyCost,
       capacityTarget,
@@ -1016,6 +1103,9 @@ async function appState(request: Request, user: SessionUser, month: string) {
             cashResult: collected - monthlyCost,
             capacityUsed,
             capacityTarget,
+            capacityAvailable,
+            capacityFree: Math.max(0, capacityAvailable - capacityUsed),
+            occupancyPercent: capacityAvailable > 0 ? Math.round((capacityUsed / capacityAvailable) * 1000) / 10 : 0,
           }
         : null,
   };
@@ -1035,7 +1125,8 @@ export async function GET(request: Request) {
     const month =
       url.searchParams.get("month") ??
       new Date().toISOString().slice(0, 7);
-    return json({ setupRequired: false, ...(await appState(request, user, month)) });
+    const locationId = url.searchParams.get("location") ?? DEFAULT_LOCATION_ID;
+    return json({ setupRequired: false, ...(await appState(request, user, month, locationId)) });
   } catch (error) {
     return fail(error instanceof Error ? error.message : "Unable to load the system.", 500);
   }
@@ -1066,6 +1157,25 @@ export async function POST(request: Request) {
         `INSERT INTO users(id, name, access_code, pin_hash, role, active, created_at)
          VALUES(?, ?, ?, ?, 'admin', 1, ?)`,
       ).bind(id, name, accessCode, await hashSecret(pin), nowIso()).run();
+      return json({ ok: true });
+    }
+
+    if (action === "owner_recovery") {
+      if (!runtimeEnv().RECOVERY_KEY || body.recoveryKey !== runtimeEnv().RECOVERY_KEY) {
+        return fail("Recovery key is not correct.", 403);
+      }
+      const accessCode = normalizeCode(body.accessCode);
+      const pin = requirePin(body.pin);
+      const owner = await db.prepare(
+        "SELECT id FROM users WHERE access_code = ? AND role = 'admin' AND active = 1",
+      ).bind(accessCode).first<{ id: string }>();
+      if (!owner) return fail("Active owner account not found.", 404);
+      await db.batch([
+        db.prepare("UPDATE users SET pin_hash = ? WHERE id = ?").bind(await hashSecret(pin), owner.id),
+        db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(owner.id),
+        db.prepare("DELETE FROM login_attempts"),
+        auditStatement(owner.id, "recover", "user", owner.id, { accessCode }),
+      ]);
       return json({ ok: true });
     }
 
@@ -1132,6 +1242,92 @@ export async function POST(request: Request) {
 
     const user = await sessionUser(request);
     if (!user) return fail("Sign in again.", 401);
+
+    if (action === "change_own_pin") {
+      const currentPin = requirePin(body.currentPin);
+      const newPin = requirePin(body.newPin);
+      const account = await db.prepare("SELECT pin_hash FROM users WHERE id = ? AND active = 1")
+        .bind(user.id).first<{ pin_hash: string }>();
+      if (!account || account.pin_hash !== await hashSecret(currentPin)) {
+        return fail("Current PIN is incorrect.", 403);
+      }
+      await db.batch([
+        db.prepare("UPDATE users SET pin_hash = ? WHERE id = ?").bind(await hashSecret(newPin), user.id),
+        db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(user.id),
+        auditStatement(user.id, "change_pin", "user", user.id, {}),
+      ]);
+      const response = json({ ok: true });
+      response.headers.set(
+        "Set-Cookie",
+        `bh_session=; Path=${COOKIE_PATH}; HttpOnly; Secure; SameSite=Strict; Max-Age=0`,
+      );
+      return response;
+    }
+
+    if (action === "save_location") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const existingId = safeText(body.locationId, 80).toLowerCase().replace(/[^a-z0-9-]/g, "");
+      const name = safeText(body.name, 200);
+      const address = safeText(body.address, 500);
+      const chairCount = Number(body.chairCount);
+      const openMin = Number(body.openMin);
+      const closeMin = Number(body.closeMin);
+      const workingDaysWeek = Number(body.workingDaysWeek);
+      if (!name) return fail("Enter the location name.");
+      if (!Number.isInteger(chairCount) || chairCount < 1 || chairCount > 50) return fail("Chair count must be between 1 and 50.");
+      if (!Number.isInteger(openMin) || !Number.isInteger(closeMin) || openMin % 15 || closeMin % 15 || openMin < 360 || closeMin > 1380 || openMin >= closeMin) {
+        return fail("Working hours must use 15-minute steps between 06:00 and 23:00.");
+      }
+      if (!Number.isInteger(workingDaysWeek) || workingDaysWeek < 1 || workingDaysWeek > 7) return fail("Working days must be between 1 and 7.");
+      const id = existingId || `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50)}-${crypto.randomUUID().slice(0, 6)}`;
+      const existing = await db.prepare("SELECT id FROM locations WHERE id = ?").bind(id).first<{ id: string }>();
+      if (existing) {
+        await db.batch([
+          db.prepare("UPDATE locations SET name = ?, address = ?, chair_count = ?, open_min = ?, close_min = ?, working_days_week = ?, updated_at = ? WHERE id = ?")
+            .bind(name, address, chairCount, openMin, closeMin, workingDaysWeek, nowIso(), id),
+          auditStatement(user.id, "update", "location", id, { name, chairCount, openMin, closeMin, workingDaysWeek }),
+        ]);
+      } else {
+        await db.batch([
+          db.prepare("INSERT INTO locations(id, name, address, chair_count, open_min, close_min, working_days_week, active, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, 1, ?, ?)")
+            .bind(id, name, address, chairCount, openMin, closeMin, workingDaysWeek, nowIso(), nowIso()),
+          auditStatement(user.id, "create", "location", id, { name, chairCount, openMin, closeMin, workingDaysWeek }),
+        ]);
+      }
+      return json({ ok: true, locationId: id });
+    }
+
+    if (action === "save_location_expense") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const location = await locationById(body.locationId, false);
+      const category = safeText(body.category, 40).toLowerCase();
+      if (!EXPENSE_CATEGORIES.has(category)) return fail("Choose a valid expense category.");
+      const amountCents = cents(body.amount);
+      if (amountCents < 0) return fail("Expense amount must be zero or more.");
+      const note = safeText(body.note, 300);
+      const expenseId = safeText(body.expenseId, 80) || crypto.randomUUID();
+      const existing = await db.prepare("SELECT id FROM location_expenses WHERE id = ? AND location_id = ?")
+        .bind(expenseId, location.id).first<{ id: string }>();
+      if (existing) {
+        await db.prepare("UPDATE location_expenses SET category = ?, amount_cents = ?, note = ?, active = 1, updated_at = ? WHERE id = ?")
+          .bind(category, amountCents, note, nowIso(), expenseId).run();
+      } else {
+        await db.prepare("INSERT INTO location_expenses(id, location_id, category, amount_cents, note, active, created_at, updated_at) VALUES(?, ?, ?, ?, ?, 1, ?, ?)")
+          .bind(expenseId, location.id, category, amountCents, note, nowIso(), nowIso()).run();
+      }
+      await auditStatement(user.id, existing ? "update" : "create", "location_expense", expenseId, { locationId: location.id, category, amountCents }).run();
+      return json({ ok: true });
+    }
+
+    if (action === "delete_location_expense") {
+      if (user.role !== "admin") return fail("Administrator access required.", 403);
+      const expenseId = safeText(body.expenseId, 80);
+      await db.batch([
+        db.prepare("UPDATE location_expenses SET active = 0, updated_at = ? WHERE id = ?").bind(nowIso(), expenseId),
+        auditStatement(user.id, "deactivate", "location_expense", expenseId, {}),
+      ]);
+      return json({ ok: true });
+    }
 
     if (action === "create_member") {
       if (user.role !== "admin") return fail("Administrator access required.", 403);
@@ -1217,6 +1413,7 @@ export async function POST(request: Request) {
         return fail("Choose a monthly plan.");
       }
       const plan = PLANS[planKey];
+      const location = await locationById(body.locationId);
       const startDate = validDate(body.startDate);
       const endDate = addDays(startDate, 29);
       const member = await db.prepare(
@@ -1242,7 +1439,7 @@ export async function POST(request: Request) {
           409,
         );
       }
-      const preferredChair = validChair(body.preferredChair ?? 0, true);
+      const preferredChair = validChair(body.preferredChair ?? 0, Number(location.chair_count), true);
       const weekdays = Array.isArray(body.weekdays)
         ? body.weekdays.map(Number).filter((value) => value >= 0 && value <= 6)
         : [];
@@ -1251,8 +1448,8 @@ export async function POST(request: Request) {
           ? body.shiftKey
           : "day-pass";
       const shift = PLANS[shiftKey];
-      const startMin = plan.dedicated ? OPEN_MIN : shift.startMin;
-      const endMin = plan.dedicated ? CLOSE_MIN : shift.endMin;
+      const startMin = plan.dedicated ? Number(location.open_min) : Math.max(Number(location.open_min), shift.startMin);
+      const endMin = plan.dedicated ? Number(location.close_min) : Math.min(Number(location.close_min), shift.endMin);
       if (!plan.dedicated && weekdays.length === 0) {
         return fail("Choose at least one working day.");
       }
@@ -1271,14 +1468,14 @@ export async function POST(request: Request) {
         return fail(`The selected weekdays provide only ${dates.length} of ${plan.credits} required days.`);
       }
 
-      const occupied = await occupiedSlots(startDate, endDate);
+      const occupied = await occupiedSlots(location.id, startDate, endDate);
       const membershipId = crypto.randomUUID();
       const candidates: BookingCandidate[] = [];
 
       if (plan.dedicated) {
-        const chairs = preferredChair ? [preferredChair] : [1, 2, 3, 4, 5];
+        const chairs = preferredChair ? [preferredChair] : chairIds(location);
         const chair = chairs.find((chairId) =>
-          dates.every((date) => chairIsFree(occupied, chairId, date, startMin, endMin)),
+          dates.every((date) => chairIsFree(occupied, location.id, chairId, date, startMin, endMin)),
         );
         if (!chair) return fail("No single chair is free for the complete Pro term.");
         for (const date of dates) {
@@ -1286,6 +1483,7 @@ export async function POST(request: Request) {
             id: crypto.randomUUID(),
             userId,
             membershipId,
+            locationId: location.id,
             chairId: chair,
             date,
             startMin,
@@ -1302,11 +1500,11 @@ export async function POST(request: Request) {
         for (const date of dates) {
           const chairs = preferredChair
             ? [preferredChair]
-            : [1, 2, 3, 4, 5].sort(
+            : chairIds(location).sort(
                 (a, b) => (chairLoads.get(a) ?? 0) - (chairLoads.get(b) ?? 0),
               );
           const chair = chairs.find((chairId) =>
-            chairIsFree(occupied, chairId, date, startMin, endMin),
+            chairIsFree(occupied, location.id, chairId, date, startMin, endMin),
           );
           if (!chair) {
             return fail(`No chair is available on ${date} for the complete selected shift.`);
@@ -1316,6 +1514,7 @@ export async function POST(request: Request) {
             id: crypto.randomUUID(),
             userId,
             membershipId,
+            locationId: location.id,
             chairId: chair,
             date,
             startMin,
@@ -1333,12 +1532,13 @@ export async function POST(request: Request) {
       const statements: D1PreparedStatement[] = [
         db.prepare(
           `INSERT INTO memberships(
-            id, user_id, plan_key, start_date, end_date, credits_total,
+            id, user_id, location_id, plan_key, start_date, end_date, credits_total,
             credits_used, price_cents, preferred_chair, status, created_at
-          ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
+          ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
         ).bind(
           membershipId,
           userId,
+          location.id,
           planKey,
           startDate,
           endDate,
@@ -1369,6 +1569,7 @@ export async function POST(request: Request) {
           userId,
           planKey,
           bookings: candidates.length,
+          locationId: location.id,
         }),
       );
       await db.batch(statements);
@@ -1438,8 +1639,11 @@ export async function POST(request: Request) {
     }
 
     if (action === "create_booking") {
+      if (user.role !== "admin") {
+        return fail("Minute-based bookings are managed through the public reservation flow. Contact an administrator to change them.", 403);
+      }
       const requestedUserId =
-        user.role === "admin" ? String(body.userId ?? user.id) : user.id;
+        String(body.userId ?? user.id);
       const bookingMember = await db.prepare(
         "SELECT id FROM users WHERE id = ? AND role = 'member' AND active = 1",
       ).bind(requestedUserId).first<{ id: string }>();
@@ -1449,13 +1653,10 @@ export async function POST(request: Request) {
         return fail("Choose Hourly, Morning, Evening, Day Pass or an access extension.");
       }
       const plan = PLANS[planKey];
+      const location = await locationById(body.locationId);
       const date = validDate(body.date);
       const historicalAdminEntry = user.role === "admin" && date < dateInRiga();
-      if (date < dateInRiga() && user.role !== "admin") {
-        return fail("Past dates cannot be booked.");
-      }
-      if (user.role !== "admin") await assertMemberBookingWindow(requestedUserId, date);
-      const requestedChair = validChair(body.chairId ?? 0, true);
+      const requestedChair = validChair(body.chairId ?? 0, Number(location.chair_count), true);
       let startMin = plan.startMin;
       let endMin = plan.endMin;
       let amountCents = plan.priceCents;
@@ -1464,11 +1665,11 @@ export async function POST(request: Request) {
         endMin = Number(body.endMin);
         const duration = endMin - startMin;
         slotNumbers(startMin, endMin);
-        if (startMin < OPEN_MIN || endMin > CLOSE_MIN) {
-          return fail("Hourly access is available between 09:00 and 21:00.");
+        if (startMin < Number(location.open_min) || endMin > Number(location.close_min)) {
+          return fail(`Minute access is available between ${clockLabel(location.open_min)} and ${clockLabel(location.close_min)}.`);
         }
-        if (duration < 120 || duration > 240) {
-          return fail("Hourly access must be between 2 and 4 hours.");
+        if (duration < 60) {
+          return fail("Minute access requires a minimum reservation of 60 minutes.");
         }
         amountCents = Math.round((duration / 60) * plan.priceCents);
       }
@@ -1479,11 +1680,11 @@ export async function POST(request: Request) {
         }
         const baseBooking = await db.prepare(
           `SELECT chair_id FROM bookings
-           WHERE user_id = ? AND date = ? AND status = 'confirmed'
+           WHERE user_id = ? AND location_id = ? AND date = ? AND status = 'confirmed'
              AND start_min < ? AND end_min > ?
            ORDER BY start_min
            LIMIT 1`,
-        ).bind(requestedUserId, date, CLOSE_MIN, OPEN_MIN).first<{ chair_id: number }>();
+        ).bind(requestedUserId, location.id, date, Number(location.close_min), Number(location.open_min)).first<{ chair_id: number }>();
         if (!baseBooking) {
           return fail("Book a regular working period on that date before adding an extension.");
         }
@@ -1492,14 +1693,15 @@ export async function POST(request: Request) {
           return fail(`This extension must use Chair ${extensionChair}, matching the existing booking.`);
         }
       }
-      const occupied = await occupiedSlots(date, date);
+      const occupied = await occupiedSlots(location.id, date, date);
       const chairs = extensionChair
         ? [extensionChair]
         : requestedChair
           ? [requestedChair]
-          : [1, 2, 3, 4, 5];
+          : chairIds(location);
+      const [blockedStart, blockedEnd] = occupancyRange(planKey, startMin, endMin);
       const chair = chairs.find((chairId) =>
-        chairIsFree(occupied, chairId, date, startMin, endMin),
+        chairIsFree(occupied, location.id, chairId, date, blockedStart, blockedEnd),
       );
       if (!chair) return fail("No chair is free for that time.");
       const bookingId = crypto.randomUUID();
@@ -1508,6 +1710,7 @@ export async function POST(request: Request) {
         id: bookingId,
         userId: requestedUserId,
         membershipId: null,
+        locationId: location.id,
         chairId: chair,
         date,
         startMin,
@@ -1527,7 +1730,7 @@ export async function POST(request: Request) {
           transactionId,
           requestedUserId,
           bookingId,
-          `${plan.name} · Chair ${chair}`,
+          `${plan.name} · ${location.name} · Chair ${chair}`,
           amountCents,
           date,
           nowIso(),
@@ -1537,6 +1740,7 @@ export async function POST(request: Request) {
           planKey,
           date,
           chair,
+          locationId: location.id,
         }),
       ]);
       return json({ ok: true, bookingId, chair });
@@ -1549,6 +1753,7 @@ export async function POST(request: Request) {
          WHERE id = ? AND status = 'active' AND (? = 'admin' OR user_id = ?)`,
       ).bind(membershipId, user.role, user.id).first<Record<string, unknown>>();
       if (!membership) return fail("Active membership not found.", 404);
+      const location = await locationById(membership.location_id ?? DEFAULT_LOCATION_ID);
       if (Number(membership.credits_used) >= Number(membership.credits_total)) {
         return fail("No plan days remain.");
       }
@@ -1566,11 +1771,11 @@ export async function POST(request: Request) {
          LIMIT 1`,
       ).bind(membershipId, date).first<{ id: string }>();
       if (existingPlanDay) return fail("This plan already has a booking on that date.", 409);
-      const requestedChair = validChair(body.chairId ?? 0, true);
-      const occupied = await occupiedSlots(date, date);
-      const chairs = requestedChair ? [requestedChair] : [1, 2, 3, 4, 5];
+      const requestedChair = validChair(body.chairId ?? 0, Number(location.chair_count), true);
+      const occupied = await occupiedSlots(location.id, date, date);
+      const chairs = requestedChair ? [requestedChair] : chairIds(location);
       const chair = chairs.find((chairId) =>
-        chairIsFree(occupied, chairId, date, OPEN_MIN, CLOSE_MIN),
+        chairIsFree(occupied, location.id, chairId, date, Number(location.open_min), Number(location.close_min)),
       );
       if (!chair) return fail("No chair is free for that day.");
       const bookingId = crypto.randomUUID();
@@ -1578,10 +1783,11 @@ export async function POST(request: Request) {
         id: bookingId,
         userId: String(membership.user_id),
         membershipId,
+        locationId: location.id,
         chairId: chair,
         date,
-        startMin: OPEN_MIN,
-        endMin: CLOSE_MIN,
+        startMin: Number(location.open_min),
+        endMin: Number(location.close_min),
         planKey: String(membership.plan_key) as PlanKey,
         amountCents: 0,
         createdBy: user.id,
@@ -1613,7 +1819,8 @@ export async function POST(request: Request) {
       const planKey = String(booking.plan_key) as PlanKey;
       const plan = PLANS[planKey];
       if (!plan) return fail("Booking plan is not available.");
-      const requestedChair = validChair(body.chairId ?? booking.chair_id, true);
+      const location = await locationById(booking.location_id ?? DEFAULT_LOCATION_ID, false);
+      const requestedChair = validChair(body.chairId ?? booking.chair_id, Number(location.chair_count), true);
       const notes = String(body.notes ?? "").trim().slice(0, 500);
       let startMin = plan.startMin;
       let endMin = plan.endMin;
@@ -1636,8 +1843,8 @@ export async function POST(request: Request) {
         startMin = Number(body.startMin ?? booking.start_min);
         endMin = Number(body.endMin ?? booking.end_min);
         slotNumbers(startMin, endMin);
-        if (startMin < OPEN_MIN || endMin > CLOSE_MIN) {
-          return fail("Plan bookings must stay between 09:00 and 21:00.");
+        if (startMin < Number(location.open_min) || endMin > Number(location.close_min)) {
+          return fail(`Plan bookings must stay between ${clockLabel(location.open_min)} and ${clockLabel(location.close_min)}.`);
         }
         amountCents = 0;
       } else if (planKey === "hourly") {
@@ -1645,11 +1852,11 @@ export async function POST(request: Request) {
         endMin = Number(body.endMin);
         const duration = endMin - startMin;
         slotNumbers(startMin, endMin);
-        if (startMin < OPEN_MIN || endMin > CLOSE_MIN) {
-          return fail("Hourly access is available between 09:00 and 21:00.");
+        if (startMin < Number(location.open_min) || endMin > Number(location.close_min)) {
+          return fail(`Minute access is available between ${clockLabel(location.open_min)} and ${clockLabel(location.close_min)}.`);
         }
-        if (duration < 120 || duration > 240) {
-          return fail("Hourly access must be between 2 and 4 hours.");
+        if (duration < 60) {
+          return fail("Minute access requires a minimum reservation of 60 minutes.");
         }
         amountCents = Math.round((duration / 60) * plan.priceCents);
       }
@@ -1661,10 +1868,10 @@ export async function POST(request: Request) {
         }
         const baseBooking = await db.prepare(
           `SELECT chair_id FROM bookings
-           WHERE user_id = ? AND date = ? AND status = 'confirmed' AND id != ?
+           WHERE user_id = ? AND location_id = ? AND date = ? AND status = 'confirmed' AND id != ?
              AND start_min < ? AND end_min > ?
            ORDER BY start_min LIMIT 1`,
-        ).bind(String(booking.user_id), date, bookingId, CLOSE_MIN, OPEN_MIN)
+        ).bind(String(booking.user_id), location.id, date, bookingId, Number(location.close_min), Number(location.open_min))
           .first<{ chair_id: number }>();
         if (!baseBooking) {
           return fail("Book a regular working period on that date before adding an extension.");
@@ -1675,14 +1882,15 @@ export async function POST(request: Request) {
         }
       }
 
-      const occupied = await occupiedSlotsExcluding(date, date, bookingId);
+      const occupied = await occupiedSlotsExcluding(location.id, date, date, bookingId);
       const chairs = extensionChair
         ? [extensionChair]
         : requestedChair
           ? [requestedChair]
-          : [1, 2, 3, 4, 5];
+          : chairIds(location);
+      const [blockedStart, blockedEnd] = occupancyRange(planKey, startMin, endMin);
       const chair = chairs.find((chairId) =>
-        chairIsFree(occupied, chairId, date, startMin, endMin),
+        chairIsFree(occupied, location.id, chairId, date, blockedStart, blockedEnd),
       );
       if (!chair) return fail("No chair is free for that time.", 409);
 
@@ -1695,9 +1903,9 @@ export async function POST(request: Request) {
         return fail("This booking is already paid. Keep the same duration or correct the payment first.");
       }
 
-      const slots = slotNumbers(startMin, endMin);
-      const slotValues = slots.map(() => "(?, ?, ?, ?)").join(", ");
-      const slotParams = slots.flatMap((slot) => [bookingId, chair, date, slot]);
+      const slots = slotNumbers(blockedStart, blockedEnd);
+      const slotValues = slots.map(() => "(?, ?, ?, ?, ?)").join(", ");
+      const slotParams = slots.flatMap((slot) => [bookingId, location.id, chair, date, slot]);
       const statements: D1PreparedStatement[] = [
         db.prepare("DELETE FROM booking_slots WHERE booking_id = ?").bind(bookingId),
         db.prepare(
@@ -1714,7 +1922,7 @@ export async function POST(request: Request) {
           bookingId,
         ),
         db.prepare(
-          `INSERT INTO booking_slots(booking_id, chair_id, date, slot) VALUES ${slotValues}`,
+          `INSERT INTO booking_slots(booking_id, location_id, chair_id, date, slot) VALUES ${slotValues}`,
         ).bind(...slotParams),
       ];
       if (transaction) {
