@@ -15,8 +15,8 @@ test("keeps the member portal unlisted and excluded from search indexing", async
   const barberPage = await source("for-barbers.html");
 
   assert.match(html, /noindex, nofollow, noarchive, nosnippet/);
-  assert.match(html, /styles\.css\?v=20260922-business-os/);
-  assert.match(html, /app\.js\?v=20260922-business-os/);
+  assert.match(html, /styles\.css\?v=20260922-active-offers/);
+  assert.match(html, /app\.js\?v=20260922-active-offers/);
   assert.match(headers, /X-Robots-Tag: noindex, nofollow, noarchive, nosnippet/);
   assert.match(headers, /\/chair-access-bh\/app\.js[\s\S]*Cache-Control: no-cache, must-revalidate/);
   assert.match(headers, /\/chair-access-bh\/styles\.css[\s\S]*Cache-Control: no-cache, must-revalidate/);
@@ -24,7 +24,7 @@ test("keeps the member portal unlisted and excluded from search indexing", async
   assert.doesNotMatch(barberPage, /chair-access-bh/);
 });
 
-test("uses the complete approved pricing model", async () => {
+test("shows only the active minute and FLEX offers", async () => {
   const plans = await source("functions/_shared/os-plans.ts");
   const client = await source("chair-os-source/BookingOS.tsx");
 
@@ -49,7 +49,9 @@ test("uses the complete approved pricing model", async () => {
   assert.match(plans, /SLOT_MINUTES = 15/);
   assert.match(plans, /priceCents:\s*125000/);
   assert.match(plans, /hidden:\s*true/);
-  assert.match(client, /isAdmin \? plans : plans\.filter\(\(plan\) => !plan\.hidden\)/);
+  assert.match(client, /ACTIVE_OFFER_KEYS\.has\(plan\.key\)/);
+  assert.match(client, /€0\.10\/min · min\. 60 min/);
+  assert.match(client, /ACTIVE_FLEX_KEYS\.has\(plan\.key\)/);
   assert.match(client, /isAdmin \|\| !plan\?\.hidden/);
 });
 

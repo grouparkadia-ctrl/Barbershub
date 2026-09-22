@@ -200,6 +200,19 @@ const weekdayOptions = [
   ["Sun", 0],
 ] as const;
 
+const ACTIVE_OFFER_KEYS = new Set<PlanKey>([
+  "hourly",
+  "flex-10",
+  "flex-15",
+  "flex-20",
+]);
+
+const ACTIVE_FLEX_KEYS = new Set<PlanKey>([
+  "flex-10",
+  "flex-15",
+  "flex-20",
+]);
+
 function localDate(date = new Date()): string {
   const copy = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return copy.toISOString().slice(0, 10);
@@ -671,7 +684,7 @@ export default function BookingOS() {
         </section>
       )}
 
-      <PlanLegend plans={isAdmin ? plans : plans.filter((plan) => !plan.hidden)} />
+      <PlanLegend plans={plans.filter((plan) => ACTIVE_OFFER_KEYS.has(plan.key))} />
 
       {modal === "member" && (
         <MemberModal
@@ -694,7 +707,7 @@ export default function BookingOS() {
       {modal === "assign" && (
         <AssignModal
           users={users.filter((user) => user.active && user.role === "member")}
-          plans={plans.filter((plan) => plan.kind === "membership")}
+          plans={plans.filter((plan) => ACTIVE_FLEX_KEYS.has(plan.key))}
           locations={locations.filter((location) => location.active)}
           busy={busy}
           close={() => setModal(null)}
@@ -1391,7 +1404,11 @@ function PlanLegend({ plans }: { plans: Plan[] }) {
   return (
     <section className="plan-legend">
       {plans.map((plan) => (
-        <div key={plan.key}><i style={{ background: plan.color }} /><span>{plan.name}</span><strong>{plan.key === "hourly" ? "€10/h" : money(plan.priceCents)}</strong></div>
+        <div key={plan.key}>
+          <i style={{ background: plan.color }} />
+          <span>{plan.key === "hourly" ? "Flexible minute access" : plan.name}</span>
+          <strong>{plan.key === "hourly" ? "€0.10/min · min. 60 min" : money(plan.priceCents)}</strong>
+        </div>
       ))}
     </section>
   );
