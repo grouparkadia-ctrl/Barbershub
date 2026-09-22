@@ -489,19 +489,27 @@ function reserveCandidate(occupied: Set<string>, candidate: BookingCandidate): v
   }
 }
 
+function bookingSlotInsertStatement(
+  bookingId: string,
+  locationId: string,
+  chairId: number,
+  date: string,
+  slots: number[],
+): D1PreparedStatement {
+  const db = runtimeEnv().DB;
+  const slotValues = slots.map(() => "(?)").join(", ");
+  return db.prepare(
+    `WITH slots(slot) AS (VALUES ${slotValues})
+     INSERT INTO booking_slots(booking_id, location_id, chair_id, date, slot)
+     SELECT ?, ?, ?, ?, slot FROM slots`,
+  ).bind(...slots, bookingId, locationId, chairId, date);
+}
+
 function bookingStatements(candidate: BookingCandidate): D1PreparedStatement[] {
   const db = runtimeEnv().DB;
   const createdAt = nowIso();
   const [blockedStart, blockedEnd] = occupancyRange(candidate.planKey, candidate.startMin, candidate.endMin);
   const slots = slotNumbers(blockedStart, blockedEnd);
-  const slotValues = slots.map(() => "(?, ?, ?, ?, ?)").join(", ");
-  const slotParams = slots.flatMap((slot) => [
-    candidate.id,
-    candidate.locationId,
-    candidate.chairId,
-    candidate.date,
-    slot,
-  ]);
   return [
     db.prepare(
       `INSERT INTO bookings(
@@ -523,9 +531,13 @@ function bookingStatements(candidate: BookingCandidate): D1PreparedStatement[] {
       candidate.createdBy,
       createdAt,
     ),
-    db.prepare(
-      `INSERT INTO booking_slots(booking_id, location_id, chair_id, date, slot) VALUES ${slotValues}`,
-    ).bind(...slotParams),
+    bookingSlotInsertStatement(
+      candidate.id,
+      candidate.locationId,
+      candidate.chairId,
+      candidate.date,
+      slots,
+    ),
   ];
 }
 
@@ -1904,8 +1916,6 @@ export async function POST(request: Request) {
       }
 
       const slots = slotNumbers(blockedStart, blockedEnd);
-      const slotValues = slots.map(() => "(?, ?, ?, ?, ?)").join(", ");
-      const slotParams = slots.flatMap((slot) => [bookingId, location.id, chair, date, slot]);
       const statements: D1PreparedStatement[] = [
         db.prepare("DELETE FROM booking_slots WHERE booking_id = ?").bind(bookingId),
         db.prepare(
@@ -1921,9 +1931,7 @@ export async function POST(request: Request) {
           notes,
           bookingId,
         ),
-        db.prepare(
-          `INSERT INTO booking_slots(booking_id, location_id, chair_id, date, slot) VALUES ${slotValues}`,
-        ).bind(...slotParams),
+        bookingSlotInsertStatement(bookingId, location.id, chair, date, slots),
       ];
       if (transaction) {
         statements.push(

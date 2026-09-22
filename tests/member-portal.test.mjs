@@ -166,6 +166,9 @@ test("supports safe member, booking, plan, and payment corrections", async () =>
 
   assert.match(api, /already has an active/);
   assert.match(api, /occupiedSlotsExcluding/);
+  assert.match(api, /WITH slots\(slot\) AS \(VALUES \$\{slotValues\}\)/);
+  assert.match(api, /SELECT \?, \?, \?, \?, slot FROM slots/);
+  assert.doesNotMatch(api, /slots\.map\(\(\) => "\(\?, \?, \?, \?, \?\)"\)/);
   assert.match(api, /DELETE FROM booking_slots WHERE booking_id = \?/);
   assert.match(api, /UPDATE transactions SET description = \?, amount_cents = \?, due_date = \?/);
   assert.match(api, /UPDATE transactions SET status = 'cancelled'.*status = 'due'/s);
